@@ -25,7 +25,7 @@
                 >
                   <div class="flex justify-between">
                     <label
-                      class="text-muted-foreground text-xs font-medium text-gray-400 group-focus-within:text-white"
+                      class="text-muted-foreground select-none text-xs font-medium text-gray-400 group-focus-within:text-white"
                       >URL <span class="text-red-500">*</span></label
                     >
                   </div>
@@ -45,7 +45,7 @@
                 >
                   <div class="flex justify-between">
                     <label
-                      class="text-muted-foreground text-xs font-medium text-gray-400 group-focus-within:text-white"
+                      class="text-muted-foreground select-none text-xs font-medium text-gray-400 group-focus-within:text-white"
                       >Tenant <span class="text-red-500">*</span></label
                     >
                   </div>
@@ -67,7 +67,7 @@
                 >
                   <div class="flex justify-between">
                     <label
-                      class="text-muted-foreground text-xs font-medium text-gray-400 group-focus-within:text-white"
+                      class="text-muted-foreground select-none text-xs font-medium text-gray-400 group-focus-within:text-white"
                       >Database <span class="text-red-500">*</span></label
                     >
                   </div>
