@@ -5,6 +5,8 @@ services:
             - '8080:8000'
         volumes:
             - chroma-data:/chroma/chroma
+        environment:
+            - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["http://localhost:5174"]
 volumes:
     chroma-data:
         driver: local
