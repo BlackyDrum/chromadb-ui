@@ -1,6 +1,86 @@
-<script setup></script>
+<script setup>
+import { ref } from "vue";
+
+import axios from "axios";
+
+import Toast from "primevue/toast";
+import { useToast } from "primevue/usetoast";
+
+import { Button } from "primevue";
+
+const toast = useToast();
+
+const url = ref("http://localhost:8080");
+const tenant = ref("default_database");
+const database = ref("default_tenant");
+
+const connected = ref(false);
+const isInitializingConnection = ref(false);
+
+const handleConnectionInitialization = () => {
+  if (!url.value || !tenant.value || !database.value) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: "Please provide the URL, tenant, and database values",
+      life: 5000,
+    });
+
+    return;
+  }
+
+  if (!isValidURL(url.value)) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: "Invalid URL provided",
+      life: 5000,
+    });
+
+    return;
+  }
+
+  isInitializingConnection.value = true;
+
+  axios
+    .get(`${url.value}/api/v1`)
+    .then((response) => {
+      connected.value = true;
+    })
+    .catch((error) => {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "An unknown error occurred.";
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Unable to connect to the server. Reason: ${errorMessage}`,
+        life: 5000,
+      });
+    })
+    .finally(() => {
+      isInitializingConnection.value = false;
+    });
+};
+
+const isValidURL = (str) => {
+  let url;
+
+  try {
+    url = new URL(str);
+  } catch (_) {
+    return false;
+  }
+
+  return url.protocol === "http:" || url.protocol === "https:";
+};
+</script>
 
 <template>
+  <Toast />
+
   <div
     class="flex min-h-screen flex-col items-center bg-black pt-16 text-white sm:justify-center sm:pt-0"
   >
@@ -17,7 +97,7 @@
           </h3>
         </div>
         <div class="p-6 pt-0">
-          <form @submit.prevent>
+          <form @submit.prevent="handleConnectionInitialization">
             <div>
               <div>
                 <div
@@ -34,6 +114,8 @@
                     name="url"
                     autocomplete="off"
                     class="file:bg-accent placeholder:text-muted-foreground/90 text-foreground block w-full border-0 bg-transparent p-0 text-sm file:my-1 file:rounded-full file:border-0 file:px-4 file:py-2 file:font-medium focus:outline-none focus:ring-0 sm:leading-7"
+                    v-model="url"
+                    :disabled="isInitializingConnection"
                   />
                 </div>
               </div>
@@ -54,6 +136,8 @@
                       type="text"
                       name="tenant"
                       class="placeholder:text-muted-foreground/90 text-foreground block w-full border-0 bg-transparent p-0 text-sm file:my-1 focus:outline-none focus:ring-0 focus:ring-teal-500 sm:leading-7"
+                      v-model="tenant"
+                      :disabled="isInitializingConnection"
                     />
                   </div>
                 </div>
@@ -76,6 +160,8 @@
                       type="text"
                       name="database"
                       class="placeholder:text-muted-foreground/90 text-foreground block w-full border-0 bg-transparent p-0 text-sm file:my-1 focus:outline-none focus:ring-0 focus:ring-teal-500 sm:leading-7"
+                      v-model="database"
+                      :disabled="isInitializingConnection"
                     />
                   </div>
                 </div>
@@ -83,12 +169,18 @@
             </div>
 
             <div class="mt-4 flex w-full items-center justify-end gap-x-2">
-              <button
-                class="inline-flex h-10 w-full items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-black transition duration-300 hover:bg-black hover:text-white hover:ring hover:ring-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+              <Button
+                unstyled
+                class="relative inline-flex h-10 w-full items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-black transition duration-300 hover:bg-black hover:text-white hover:ring hover:ring-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
                 type="submit"
+                :disabled="isInitializingConnection"
               >
                 Connect
-              </button>
+                <i
+                  v-if="isInitializingConnection"
+                  class="pi pi-spin pi-spinner absolute right-0 mr-4"
+                ></i>
+              </Button>
             </div>
           </form>
         </div>
