@@ -1,0 +1,10 @@
+services:
+    chromadb:
+        image: 'chromadb/chroma:0.5.15'
+        ports:
+            - '8080:8000'
+        volumes:
+            - chroma-data:/chroma/chroma
+volumes:
+    chroma-data:
+        driver: local
