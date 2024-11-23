@@ -6,7 +6,7 @@ services:
         volumes:
             - chroma-data:/chroma/chroma
         environment:
-            - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["http://localhost:5174"]
+            - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["http://localhost:5173"]
 volumes:
     chroma-data:
         driver: local
