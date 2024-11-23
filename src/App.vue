@@ -81,6 +81,10 @@ const handleConnectionInitialization = () => {
     });
 };
 
+const handleDisconnect = () => {
+  connected.value = false;
+};
+
 const isValidURL = (str) => {
   let url;
 
@@ -277,22 +281,26 @@ const retrieveCollections = () => {
     </Button>
     <aside
       id="default-sidebar"
-      class="scroll-container fixed left-0 top-0 z-40 h-screen w-64 -translate-x-full transition-transform sm:translate-x-0"
+      class="scroll-container fixed left-0 top-0 z-40 flex h-screen w-64 -translate-x-full flex-col border-r-2 border-gray-400 transition-transform sm:translate-x-0"
       aria-label="Sidebar"
     >
-      <div
-        class="h-full overflow-y-auto border-r-2 border-gray-400 bg-black px-3 py-4"
-      >
+      <div class="h-full overflow-y-auto bg-black px-3 py-4">
         <ul class="space-y-2 font-medium">
           <li v-for="collection in collections" :key="collection.id">
             <Button
               unstyled
-              class="group w-full flex items-center rounded-lg p-2 text-white hover:bg-gray-900"
+              class="group flex w-full items-center rounded-lg p-2 text-white hover:bg-gray-900"
             >
               <span class="ms-3">{{ collection.name }}</span>
             </Button>
           </li>
         </ul>
+      </div>
+      <div class="px-3 py-4 text-center">
+        <Button severity="info" class="w-full" @click="handleDisconnect">
+          <i class="pi pi-sign-out"></i>
+          Disconnect
+        </Button>
       </div>
     </aside>
 
