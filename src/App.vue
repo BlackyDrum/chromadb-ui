@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from "vue";
+import { onBeforeMount, ref } from "vue";
 
 import axios from "axios";
 
@@ -16,6 +16,10 @@ const database = ref("default_tenant");
 
 const connected = ref(false);
 const isInitializingConnection = ref(false);
+
+onBeforeMount(() => {
+  retrieveConnectionParameters();
+});
 
 const handleConnectionInitialization = () => {
   if (!url.value || !tenant.value || !database.value) {
@@ -45,6 +49,8 @@ const handleConnectionInitialization = () => {
   axios
     .get(`${url.value}/api/v1`)
     .then((response) => {
+      storeConnectionParameters(url.value, tenant.value, database.value);
+
       connected.value = true;
     })
     .catch((error) => {
@@ -75,6 +81,29 @@ const isValidURL = (str) => {
   }
 
   return url.protocol === "http:" || url.protocol === "https:";
+};
+
+const storeConnectionParameters = (url, tenant, database) => {
+  const connection = {
+    stored_url: url,
+    stored_tenant: tenant,
+    stored_database: database,
+  };
+
+  localStorage.setItem("connection", JSON.stringify(connection));
+};
+
+const retrieveConnectionParameters = () => {
+  const connection = localStorage.getItem("connection") ?? null;
+
+  if (connection) {
+    const { stored_url, stored_tenant, stored_database } =
+      JSON.parse(connection);
+
+    url.value = stored_url;
+    tenant.value = stored_tenant;
+    database.value = stored_database;
+  }
 };
 </script>
 
