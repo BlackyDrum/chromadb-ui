@@ -11,6 +11,7 @@ import { Button, DataTable, Column } from "primevue";
 const toast = useToast();
 
 const url = ref("http://localhost:8080");
+const apiUrl = ref("");
 const tenant = ref("default_database");
 const database = ref("default_tenant");
 
@@ -50,6 +51,10 @@ const handleConnectionInitialization = () => {
     .get(`${url.value}/api/v1`)
     .then((response) => {
       storeConnectionParameters(url.value, tenant.value, database.value);
+
+      apiUrl.value = `${url.value}/api/v1`;
+
+      initializeTenantAndDatabase();
 
       connected.value = true;
     })
@@ -104,6 +109,22 @@ const retrieveConnectionParameters = () => {
     tenant.value = stored_tenant;
     database.value = stored_database;
   }
+};
+
+const initializeTenantAndDatabase = () => {
+  axios.get(`${apiUrl.value}/tenants/${tenant.value}`).catch(() => {
+    axios.post(`${apiUrl.value}/tenants`, {
+      name: tenant.value,
+    });
+  });
+
+  axios
+    .get(`${apiUrl.value}/databases/${database.value}?tenant=${tenant.value}`)
+    .catch(() => {
+      axios.post(`${apiUrl.value}/databases?tenant=${tenant.value}`, {
+        name: database.value,
+      });
+    });
 };
 </script>
 
@@ -247,7 +268,7 @@ const retrieveConnectionParameters = () => {
       aria-label="Sidebar"
     >
       <div
-        class="h-full overflow-y-auto border-r-2 border-gray-400 px-3 py-4 bg-black"
+        class="h-full overflow-y-auto border-r-2 border-gray-400 bg-black px-3 py-4"
       >
         <ul class="space-y-2 font-medium">
           <li>
@@ -263,7 +284,7 @@ const retrieveConnectionParameters = () => {
     </aside>
 
     <div class="p-4 sm:ml-64">
-      <div class="rounded-lg border-2 p-4 border-gray-400">
+      <div class="rounded-lg border-2 border-gray-400 p-4">
         <DataTable>
           <Column field="id" header="ID"></Column>
           <Column field="document" header="Document"></Column>
