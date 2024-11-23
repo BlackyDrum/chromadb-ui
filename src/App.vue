@@ -12,8 +12,11 @@ const toast = useToast();
 
 const url = ref("http://localhost:8080");
 const apiUrl = ref("");
+const collectionBaseUrl = ref("");
 const tenant = ref("default_database");
 const database = ref("default_tenant");
+
+const collections = ref([]);
 
 const connected = ref(false);
 const isInitializingConnection = ref(false);
@@ -48,13 +51,15 @@ const handleConnectionInitialization = () => {
   isInitializingConnection.value = true;
 
   axios
-    .get(`${url.value}/api/v1`)
+    .get(`${url.value}/api/v2`)
     .then((response) => {
       storeConnectionParameters(url.value, tenant.value, database.value);
 
-      apiUrl.value = `${url.value}/api/v1`;
+      apiUrl.value = `${url.value}/api/v2`;
 
       initializeTenantAndDatabase();
+
+      retrieveCollections();
 
       connected.value = true;
     })
@@ -119,12 +124,20 @@ const initializeTenantAndDatabase = () => {
   });
 
   axios
-    .get(`${apiUrl.value}/databases/${database.value}?tenant=${tenant.value}`)
+    .get(`${apiUrl.value}/tenants/${tenant.value}/databases/${database.value}`)
     .catch(() => {
-      axios.post(`${apiUrl.value}/databases?tenant=${tenant.value}`, {
+      axios.post(`${apiUrl.value}/tenants/${tenant.value}/databases`, {
         name: database.value,
       });
     });
+
+  collectionBaseUrl.value = `${apiUrl.value}/tenants/${tenant.value}/databases/${database.value}/collections`;
+};
+
+const retrieveCollections = () => {
+  axios.get(collectionBaseUrl.value).then((response) => {
+    collections.value = response.data;
+  });
 };
 </script>
 
@@ -264,19 +277,19 @@ const initializeTenantAndDatabase = () => {
     </Button>
     <aside
       id="default-sidebar"
-      class="fixed left-0 top-0 z-40 h-screen w-64 -translate-x-full transition-transform sm:translate-x-0"
+      class="scroll-container fixed left-0 top-0 z-40 h-screen w-64 -translate-x-full transition-transform sm:translate-x-0"
       aria-label="Sidebar"
     >
       <div
         class="h-full overflow-y-auto border-r-2 border-gray-400 bg-black px-3 py-4"
       >
         <ul class="space-y-2 font-medium">
-          <li>
+          <li v-for="collection in collections" :key="collection.id">
             <a
               href="#"
               class="group flex items-center rounded-lg p-2 text-white hover:bg-gray-900"
             >
-              <span class="ms-3">Dashboard</span>
+              <span class="ms-3">{{ collection.name }}</span>
             </a>
           </li>
         </ul>
@@ -294,3 +307,14 @@ const initializeTenantAndDatabase = () => {
     </div>
   </div>
 </template>
+
+<style>
+.scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.scroll-container:hover {
+  scrollbar-color: #ffffff transparent;
+}
+</style>
