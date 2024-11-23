@@ -285,12 +285,12 @@ const retrieveCollections = () => {
       >
         <ul class="space-y-2 font-medium">
           <li v-for="collection in collections" :key="collection.id">
-            <a
-              href="#"
-              class="group flex items-center rounded-lg p-2 text-white hover:bg-gray-900"
+            <Button
+              unstyled
+              class="group w-full flex items-center rounded-lg p-2 text-white hover:bg-gray-900"
             >
               <span class="ms-3">{{ collection.name }}</span>
-            </a>
+            </Button>
           </li>
         </ul>
       </div>
