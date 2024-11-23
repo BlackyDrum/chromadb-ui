@@ -6,7 +6,7 @@ import axios from "axios";
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
 
-import { Button } from "primevue";
+import { Button, DataTable, Column } from "primevue";
 
 const toast = useToast();
 
@@ -112,6 +112,7 @@ const retrieveConnectionParameters = () => {
 
   <div
     class="flex min-h-screen flex-col items-center bg-black pt-16 text-white sm:justify-center sm:pt-0"
+    v-if="!connected"
   >
     <div class="relative mt-12 w-full max-w-lg sm:mt-10">
       <div
@@ -213,6 +214,61 @@ const retrieveConnectionParameters = () => {
             </div>
           </form>
         </div>
+      </div>
+    </div>
+  </div>
+  <div class="min-h-screen bg-black" v-else>
+    <Button
+      unstyled
+      data-drawer-target="default-sidebar"
+      data-drawer-toggle="default-sidebar"
+      aria-controls="default-sidebar"
+      type="button"
+      class="ms-3 mt-2 inline-flex items-center rounded-lg p-2 text-sm text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 sm:hidden dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
+    >
+      <span class="sr-only">Open sidebar</span>
+      <svg
+        class="h-6 w-6"
+        aria-hidden="true"
+        fill="currentColor"
+        viewBox="0 0 20 20"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          clip-rule="evenodd"
+          fill-rule="evenodd"
+          d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z"
+        ></path>
+      </svg>
+    </Button>
+    <aside
+      id="default-sidebar"
+      class="fixed left-0 top-0 z-40 h-screen w-64 -translate-x-full transition-transform sm:translate-x-0"
+      aria-label="Sidebar"
+    >
+      <div
+        class="h-full overflow-y-auto border-r-2 border-gray-400 px-3 py-4 bg-black"
+      >
+        <ul class="space-y-2 font-medium">
+          <li>
+            <a
+              href="#"
+              class="group flex items-center rounded-lg p-2 text-white hover:bg-gray-900"
+            >
+              <span class="ms-3">Dashboard</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <div class="p-4 sm:ml-64">
+      <div class="rounded-lg border-2 p-4 border-gray-400">
+        <DataTable>
+          <Column field="id" header="ID"></Column>
+          <Column field="document" header="Document"></Column>
+          <Column field="metadata" header="Metadata"></Column>
+        </DataTable>
       </div>
     </div>
   </div>
