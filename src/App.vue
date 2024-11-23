@@ -290,8 +290,12 @@ const retrieveCollections = () => {
             <Button
               unstyled
               class="group flex w-full items-center rounded-lg p-2 text-white hover:bg-gray-900"
+              v-tooltip="{
+                    value: collection.name,
+                    showDelay: 500
+                }"
             >
-              <span class="ms-3">{{ collection.name }}</span>
+              <span class="ms-3 truncate">{{ collection.name }}</span>
             </Button>
           </li>
         </ul>
