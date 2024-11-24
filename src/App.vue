@@ -17,9 +17,12 @@ const tenant = ref("default_database");
 const database = ref("default_tenant");
 
 const collections = ref([]);
+const currentCollection = ref(null);
+const currentCollectionData = ref(null);
 
 const connected = ref(false);
 const isInitializingConnection = ref(false);
+const isFetchingCollectionData = ref(false);
 
 onBeforeMount(() => {
   retrieveConnectionParameters();
@@ -64,10 +67,7 @@ const handleConnectionInitialization = () => {
       connected.value = true;
     })
     .catch((error) => {
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "An unknown error occurred.";
+      const errorMessage = getErrorMessage(error);
 
       toast.add({
         severity: "error",
@@ -84,6 +84,8 @@ const handleConnectionInitialization = () => {
 const handleDisconnect = () => {
   connected.value = false;
   collections.value = [];
+  currentCollection.value = null;
+  currentCollectionData.value = null;
 };
 
 const isValidURL = (str) => {
@@ -145,6 +147,56 @@ const retrieveCollections = () => {
       return col1.name <= col2.name ? -1 : 1;
     });
   });
+};
+
+const handleCollectionSelection = (collection) => {
+  if (
+    isFetchingCollectionData.value ||
+    (currentCollection.value && currentCollection.value.id === collection.id)
+  )
+    return;
+
+  currentCollection.value = collection;
+  currentCollectionData.value = [];
+
+  isFetchingCollectionData.value = true;
+
+  axios
+    .post(`${collectionBaseUrl.value}/${collection.id}/get`, {
+      // Empty body to get all data for a collection
+    })
+    .then((response) => {
+      const { ids, documents, metadatas } = response.data;
+
+      ids.forEach((id, index) => {
+        currentCollectionData.value.push({
+          id,
+          document: documents[index],
+          metadata: metadatas[index],
+        });
+      });
+    })
+    .catch((error) => {
+      const errorMessage = getErrorMessage(error);
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Error fetching collection data. Reason: ${errorMessage}`,
+        life: 5000,
+      });
+    })
+    .finally(() => {
+      isFetchingCollectionData.value = false;
+    });
+};
+
+const getErrorMessage = (error) => {
+  return (
+    error.response?.data?.message ||
+    error.message ||
+    "An unknown error occurred."
+  );
 };
 </script>
 
@@ -299,12 +351,26 @@ const retrieveCollections = () => {
             <Button
               unstyled
               class="group flex w-full items-center rounded-lg p-2 text-white hover:bg-gray-900"
+              :class="{
+                'bg-gray-900':
+                  currentCollection && currentCollection.id === collection.id,
+              }"
+              :disabled="isFetchingCollectionData"
               v-tooltip="{
                 value: collection.name,
                 showDelay: 500,
               }"
+              @click="handleCollectionSelection(collection)"
             >
               <span class="ms-3 truncate">{{ collection.name }}</span>
+              <i
+                class="pi pi-spin pi-spinner ml-auto"
+                v-if="
+                  isFetchingCollectionData &&
+                  currentCollection &&
+                  currentCollection.id === collection.id
+                "
+              ></i>
             </Button>
           </li>
         </ul>
@@ -318,11 +384,23 @@ const retrieveCollections = () => {
     </aside>
 
     <div class="p-4 sm:ml-64">
-      <div class="rounded-lg border-2 border-gray-400 p-4">
-        <DataTable>
-          <Column field="id" header="ID"></Column>
+      <div class="rounded-lg p-4">
+        <DataTable showGridlines :value="currentCollectionData">
+          <template #empty>
+            {{
+              currentCollection
+                ? "No entries for this collection"
+                : "Please select a collection"
+            }}
+          </template>
+          <Column field="id" header="ID" headerStyle="width: 10rem"></Column>
           <Column field="document" header="Document"></Column>
-          <Column field="metadata" header="Metadata"></Column>
+          <Column field="metadata" header="Metadata">
+            <template #body="slotProps">
+              {{ JSON.stringify(slotProps.data.metadata) }}
+            </template>
+          </Column>
+          <Column header="Action" headerStyle="width: 10rem"></Column>
         </DataTable>
       </div>
     </div>
