@@ -141,7 +141,9 @@ const initializeTenantAndDatabase = () => {
 
 const retrieveCollections = () => {
   axios.get(collectionBaseUrl.value).then((response) => {
-    collections.value = response.data;
+    collections.value = response.data.sort((col1, col2) => {
+      return col1.name <= col2.name ? -1 : 1;
+    });
   });
 };
 </script>
