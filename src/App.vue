@@ -6,7 +6,15 @@ import axios from "axios";
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
 
-import { Button, DataTable, Column } from "primevue";
+import {
+  Button,
+  DataTable,
+  Column,
+  Dialog,
+  InputText,
+  FloatLabel,
+  Textarea,
+} from "primevue";
 
 const toast = useToast();
 
@@ -19,10 +27,14 @@ const database = ref("default_tenant");
 const collections = ref([]);
 const currentCollection = ref(null);
 const currentCollectionData = ref(null);
+const createCollectionData = ref({ name: null, metadata: null });
 
 const connected = ref(false);
 const isInitializingConnection = ref(false);
 const isFetchingCollectionData = ref(false);
+const isCreatingCollection = ref(false);
+
+const showCreateCollectionForm = ref(false);
 
 onBeforeMount(() => {
   retrieveConnectionParameters();
@@ -198,6 +210,64 @@ const getErrorMessage = (error) => {
     "An unknown error occurred."
   );
 };
+
+const handleCreateCollectionButtonClick = () => {
+  showCreateCollectionForm.value = true;
+};
+
+const handleCreateCollection = () => {
+  if (!createCollectionData.value.name || isCreatingCollection.value) return;
+
+  let metadata;
+  try {
+    metadata = createCollectionData.value.metadata
+      ? JSON.parse(createCollectionData.value.metadata)
+      : null;
+  } catch (_) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: `Metadata must be valid JSON`,
+      life: 5000,
+    });
+
+    return;
+  }
+
+  isCreatingCollection.value = true;
+
+  axios
+    .post(collectionBaseUrl.value, {
+      name: createCollectionData.value.name,
+      metadata: metadata,
+    })
+    .then((response) => {
+      toast.add({
+        severity: "success",
+        summary: "Success",
+        detail: `Collection ${createCollectionData.value.name} created`,
+        life: 5000,
+      });
+
+      retrieveCollections();
+
+      createCollectionData.value.name = null;
+      createCollectionData.value.metadata = null;
+    })
+    .catch((error) => {
+      const errorMessage = getErrorMessage(error);
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Error creating Collection. Reason: ${errorMessage}`,
+        life: 8000,
+      });
+    })
+    .finally(() => {
+      isCreatingCollection.value = false;
+    });
+};
 </script>
 
 <template>
@@ -345,6 +415,14 @@ const getErrorMessage = (error) => {
         </div>
         <div class="ml-4 self-center font-semibold">ChromaDB UI</div>
       </div>
+      <div class="ml-4 flex select-none px-3 py-4">
+        <Button
+          class="w-full"
+          label="Create Collection"
+          icon="pi pi-plus"
+          @click="handleCreateCollectionButtonClick"
+        />
+      </div>
       <div class="h-full overflow-y-auto bg-black px-3 py-2">
         <ul class="space-y-2 font-medium">
           <li v-for="collection in collections" :key="collection.id">
@@ -375,11 +453,14 @@ const getErrorMessage = (error) => {
           </li>
         </ul>
       </div>
-      <div class="px-3 py-4 text-center">
-        <Button severity="info" class="w-full" @click="handleDisconnect">
-          <i class="pi pi-sign-out"></i>
-          Disconnect
-        </Button>
+      <div class="w-full px-3 py-4 text-center">
+        <Button
+          severity="info"
+          class="w-full"
+          label="Disconnect"
+          icon="pi pi-sign-out"
+          @click="handleDisconnect"
+        />
       </div>
     </aside>
 
@@ -405,6 +486,46 @@ const getErrorMessage = (error) => {
       </div>
     </div>
   </div>
+
+  <Dialog
+    class="w-[90%] lg:w-1/2"
+    v-model:visible="showCreateCollectionForm"
+    :draggable="false"
+    modal
+    header="Create Collection"
+  >
+    <div class="flex w-full flex-col gap-4">
+      <FloatLabel variant="in" class="w-full">
+        <InputText
+          id="collection_name"
+          class="w-full"
+          v-model="createCollectionData.name"
+          variant="filled"
+        />
+        <label for="collection_name">Name</label>
+      </FloatLabel>
+      <div class="w-full">
+        <FloatLabel variant="in" class="w-full">
+          <Textarea
+            id="collection_metadata"
+            class="w-full"
+            placeholder='{"key": "value"}'
+            v-model="createCollectionData.metadata"
+            style="resize: none"
+          />
+          <label for="collection_metadata">Metadata (optional)</label>
+        </FloatLabel>
+      </div>
+    </div>
+    <div class="mt-6">
+      <Button
+        class="w-full"
+        :icon="isCreatingCollection ? 'pi pi-spin pi-spinner' : ''"
+        label="Create Collection"
+        @click="handleCreateCollection"
+      />
+    </div>
+  </Dialog>
 </template>
 
 <style>
