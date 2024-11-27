@@ -420,6 +420,7 @@ const handleCreateCollection = () => {
           class="w-full"
           label="Create Collection"
           icon="pi pi-plus"
+          severity="info"
           @click="handleCreateCollectionButtonClick"
         />
       </div>
@@ -455,7 +456,7 @@ const handleCreateCollection = () => {
       </div>
       <div class="w-full px-3 py-4 text-center">
         <Button
-          severity="info"
+          severity="secondary"
           class="w-full"
           label="Disconnect"
           icon="pi pi-sign-out"
@@ -522,6 +523,7 @@ const handleCreateCollection = () => {
         class="w-full"
         :icon="isCreatingCollection ? 'pi pi-spin pi-spinner' : ''"
         label="Create Collection"
+        severity="info"
         @click="handleCreateCollection"
       />
     </div>
