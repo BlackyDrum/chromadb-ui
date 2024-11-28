@@ -5,6 +5,7 @@ import App from './App.vue'
 
 import ToastService from 'primevue/toastservice';
 import Tooltip from "primevue/tooltip";
+import ConfirmationService from 'primevue/confirmationservice';
 
 import PrimeVue from 'primevue/config';
 import Aura from '@primevue/themes/aura';
@@ -20,5 +21,6 @@ createApp(App)
     }
   })
   .use(ToastService)
+  .use(ConfirmationService)
   .directive('tooltip', Tooltip)
   .mount('#app')

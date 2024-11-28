@@ -5,6 +5,7 @@ import axios from "axios";
 
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
+import { useConfirm } from "primevue/useconfirm";
 
 import {
   Button,
@@ -14,9 +15,12 @@ import {
   InputText,
   FloatLabel,
   Textarea,
+  OverlayPanel,
+  ConfirmDialog,
 } from "primevue";
 
 const toast = useToast();
+const confirm = useConfirm();
 
 const url = ref("http://localhost:8080");
 const apiUrl = ref("");
@@ -28,11 +32,15 @@ const collections = ref([]);
 const currentCollection = ref(null);
 const currentCollectionData = ref(null);
 const createCollectionData = ref({ name: null, metadata: null });
+const selectedCollection = ref(null);
+
+const collectionOverlayPanel = ref();
 
 const connected = ref(false);
 const isInitializingConnection = ref(false);
 const isFetchingCollectionData = ref(false);
 const isCreatingCollection = ref(false);
+const isDeletingCollection = ref(false);
 
 const showCreateCollectionForm = ref(false);
 
@@ -268,10 +276,73 @@ const handleCreateCollection = () => {
       isCreatingCollection.value = false;
     });
 };
+
+const toggleCollectionOverlayPanel = (event, collection) => {
+  if (isDeletingCollection.value) return;
+
+  collectionOverlayPanel.value.toggle(event);
+
+  selectedCollection.value = JSON.parse(JSON.stringify(collection));
+};
+
+const handleCollectionDeletion = () => {
+  if (isDeletingCollection.value) return;
+
+  collectionOverlayPanel.value.visible = false;
+
+  confirm.require({
+    message: `This will delete '${selectedCollection.value.name}'`,
+    header: "Delete collection?",
+    icon: "pi pi-info-circle",
+    rejectLabel: "Cancel",
+    acceptLabel: "Delete",
+    rejectClass: "p-button-secondary p-button-outlined",
+    acceptClass: "p-button-danger",
+    acceptIcon: "pi pi-trash",
+    accept: () => {
+      isDeletingCollection.value = true;
+
+      axios
+        .delete(`${collectionBaseUrl.value}/${selectedCollection.value.name}`)
+        .then((response) => {
+          const idx = collections.value.findIndex(
+            (collection) => collection.id === selectedCollection.value.id,
+          );
+          collections.value.splice(idx, 1);
+        })
+        .catch((error) => {
+          const errorMessage = getErrorMessage(error);
+
+          toast.add({
+            severity: "error",
+            summary: "Error",
+            detail: `Unable to delete collection. Reason: ${errorMessage}`,
+            life: 5000,
+          });
+        })
+        .finally(() => {
+          selectedCollection.value = null;
+
+          isDeletingCollection.value = false;
+        });
+    },
+    reject: () => {
+      selectedCollection.value = null;
+
+      isDeletingCollection.value = false;
+    },
+    onHide: () => {
+      selectedCollection.value = null;
+
+      isDeletingCollection.value = false;
+    },
+  });
+};
 </script>
 
 <template>
   <Toast />
+  <ConfirmDialog></ConfirmDialog>
 
   <div
     class="flex min-h-screen flex-col items-center bg-black pt-16 text-white sm:justify-center sm:pt-0"
@@ -426,10 +497,14 @@ const handleCreateCollection = () => {
       </div>
       <div class="h-full overflow-y-auto bg-black px-3 py-2">
         <ul class="space-y-2 font-medium">
-          <li v-for="collection in collections" :key="collection.id">
+          <li
+            v-for="collection in collections"
+            class="group relative rounded-lg hover:bg-gray-900"
+            :key="collection.id"
+          >
             <Button
               unstyled
-              class="group flex w-full items-center rounded-lg p-2 text-white hover:bg-gray-900"
+              class="group flex w-full items-center rounded-lg p-2 text-white"
               :class="{
                 'bg-gray-900':
                   currentCollection && currentCollection.id === collection.id,
@@ -442,12 +517,17 @@ const handleCreateCollection = () => {
               @click="handleCollectionSelection(collection)"
             >
               <span class="ms-3 truncate">{{ collection.name }}</span>
+            </Button>
+            <Button
+              unstyled
+              @click="toggleCollectionOverlayPanel($event, collection)"
+              class="invisible absolute right-2 top-1 rounded-lg bg-gray-900 p-1 pl-2 group-hover:visible"
+            >
               <i
-                class="pi pi-spin pi-spinner ml-auto"
-                v-if="
-                  isFetchingCollectionData &&
-                  currentCollection &&
-                  currentCollection.id === collection.id
+                :class="
+                  isDeletingCollection || isFetchingCollectionData
+                    ? 'pi pi-spin pi-spinner'
+                    : 'pi pi-ellipsis-h'
                 "
               ></i>
             </Button>
@@ -528,6 +608,30 @@ const handleCreateCollection = () => {
       />
     </div>
   </Dialog>
+
+  <OverlayPanel
+    ref="collectionOverlayPanel"
+    class="dark:bg-app-dark z-50 border-none font-semibold"
+  >
+    <div
+      @click=""
+      class="flex cursor-pointer gap-4 rounded-lg p-2 text-sm hover:bg-gray-700/20 dark:text-white"
+    >
+      <div>
+        <span class="pi pi-pencil"></span>
+      </div>
+      <div class="block">Rename</div>
+    </div>
+    <div
+      @click="handleCollectionDeletion"
+      class="flex cursor-pointer gap-4 rounded-lg p-2 text-sm text-red-600 hover:bg-gray-700/20"
+    >
+      <div>
+        <span class="pi pi-trash"></span>
+      </div>
+      <div class="block">Delete collection</div>
+    </div>
+  </OverlayPanel>
 </template>
 
 <style>
