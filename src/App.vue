@@ -486,7 +486,8 @@ const handleCollectionDeletion = () => {
         </div>
         <div class="ml-4 self-center font-semibold">ChromaDB UI</div>
       </div>
-      <div class="ml-4 flex select-none px-3 py-4">
+      <div class="ml-4 flex select-none px-3 gap-1 py-4">
+        <Button icon="pi pi-refresh" @click="retrieveCollections" />
         <Button
           class="w-full"
           label="Create Collection"
