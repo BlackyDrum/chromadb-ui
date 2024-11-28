@@ -480,7 +480,7 @@ const handleCollectionDeletion = () => {
       class="scroll-container fixed left-0 top-0 z-40 flex h-screen w-64 -translate-x-full flex-col border-r-2 border-gray-400 transition-transform sm:translate-x-0"
       aria-label="Sidebar"
     >
-      <div class="ml-4 flex select-none px-3 py-4">
+      <div class="ml-4 flex select-none px-3 py-3 mt-2">
         <div>
           <img src="/chroma.png" class="w-12" alt="Logo" />
         </div>
