@@ -32,7 +32,7 @@ const collections = ref([]);
 const currentCollection = ref(null);
 const currentCollectionData = ref(null);
 const createCollectionData = ref({ name: null, metadata: null });
-const selectedCollection = ref(null);
+const selectedCollection = ref(null); // Selected collection when clicking on the overlay panel
 
 const collectionOverlayPanel = ref();
 
@@ -305,6 +305,11 @@ const handleCollectionDeletion = () => {
       axios
         .delete(`${collectionBaseUrl.value}/${selectedCollection.value.name}`)
         .then((response) => {
+          if (selectedCollection.value.id === currentCollection.value.id) {
+            currentCollection.value = null;
+            currentCollectionData.value = null;
+          }
+
           const idx = collections.value.findIndex(
             (collection) => collection.id === selectedCollection.value.id,
           );
