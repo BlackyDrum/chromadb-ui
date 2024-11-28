@@ -621,7 +621,7 @@ const handleCollectionDeletion = () => {
       <div>
         <span class="pi pi-pencil"></span>
       </div>
-      <div class="block">Rename</div>
+      <div class="block">Edit</div>
     </div>
     <div
       @click="handleCollectionDeletion"
