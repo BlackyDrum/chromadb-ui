@@ -32,6 +32,7 @@ const collections = ref([]);
 const currentCollection = ref(null);
 const currentCollectionData = ref(null);
 const createCollectionData = ref({ name: null, metadata: null });
+const editCollectionData = ref({ name: null, metadata: null });
 const selectedCollection = ref(null); // Selected collection when clicking on the overlay panel
 
 const collectionOverlayPanel = ref();
@@ -41,8 +42,10 @@ const isInitializingConnection = ref(false);
 const isFetchingCollectionData = ref(false);
 const isCreatingCollection = ref(false);
 const isDeletingCollection = ref(false);
+const isEditingCollection = ref(false);
 
 const showCreateCollectionForm = ref(false);
+const showEditCollectionForm = ref(false);
 
 onBeforeMount(() => {
   retrieveConnectionParameters();
@@ -343,6 +346,68 @@ const handleCollectionDeletion = () => {
     },
   });
 };
+
+const handleCollectionEdit = () => {
+  showEditCollectionForm.value = true;
+
+  collectionOverlayPanel.value.visible = false;
+
+  editCollectionData.value.name = selectedCollection.value.name;
+  editCollectionData.value.metadata =
+    selectedCollection.value.metadata === null
+      ? null
+      : JSON.stringify(selectedCollection.value.metadata);
+};
+
+const handleEditCollection = () => {
+  if (isEditingCollection.value) return;
+
+  let metadata;
+  try {
+    metadata = editCollectionData.value.metadata
+      ? JSON.parse(editCollectionData.value.metadata)
+      : null;
+  } catch (_) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: `Metadata must be valid JSON`,
+      life: 5000,
+    });
+
+    return;
+  }
+
+  axios
+    .put(`${collectionBaseUrl.value}/${selectedCollection.value.id}`, {
+      new_name: editCollectionData.value.name,
+      new_metadata: metadata,
+    })
+    .then((response) => {
+      const idx = collections.value.findIndex(
+        (collection) => collection.id === selectedCollection.value.id,
+      );
+      collections.value[idx].name = editCollectionData.value.name;
+      collections.value[idx].metadata = metadata;
+
+      toast.add({
+        severity: "success",
+        summary: "Success",
+        detail: `Collection updated`,
+        life: 5000,
+      });
+    })
+    .catch((error) => {
+      const errorMessage = getErrorMessage(error);
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Unable to edit collection. Reason: ${errorMessage}`,
+        life: 5000,
+      });
+    });
+};
 </script>
 
 <template>
@@ -485,13 +550,13 @@ const handleCollectionDeletion = () => {
       class="scroll-container fixed left-0 top-0 z-40 flex h-screen w-64 -translate-x-full flex-col border-r-2 border-gray-400 transition-transform sm:translate-x-0"
       aria-label="Sidebar"
     >
-      <div class="ml-4 flex select-none px-3 py-3 mt-2">
+      <div class="ml-4 mt-2 flex select-none px-3 py-3">
         <div>
           <img src="/chroma.png" class="w-12" alt="Logo" />
         </div>
         <div class="ml-4 self-center font-semibold">ChromaDB UI</div>
       </div>
-      <div class="ml-4 flex select-none px-3 gap-1 py-4">
+      <div class="ml-4 flex select-none gap-1 px-3 py-4">
         <Button icon="pi pi-refresh" @click="retrieveCollections" />
         <Button
           class="w-full"
@@ -615,12 +680,53 @@ const handleCollectionDeletion = () => {
     </div>
   </Dialog>
 
+  <Dialog
+    class="w-[90%] lg:w-1/2"
+    v-model:visible="showEditCollectionForm"
+    :draggable="false"
+    modal
+    header="Edit Collection"
+  >
+    <div class="flex w-full flex-col gap-4">
+      <FloatLabel variant="in" class="w-full">
+        <InputText
+          id="collection_name"
+          class="w-full"
+          v-model="editCollectionData.name"
+          variant="filled"
+        />
+        <label for="collection_name">Name</label>
+      </FloatLabel>
+      <div class="w-full">
+        <FloatLabel variant="in" class="w-full">
+          <Textarea
+            id="collection_metadata"
+            class="w-full"
+            placeholder='{"key": "value"}'
+            v-model="editCollectionData.metadata"
+            style="resize: none"
+          />
+          <label for="collection_metadata">Metadata (optional)</label>
+        </FloatLabel>
+      </div>
+    </div>
+    <div class="mt-6">
+      <Button
+        class="w-full"
+        :icon="isEditingCollection ? 'pi pi-spin pi-spinner' : ''"
+        label="Edit Collection"
+        severity="info"
+        @click="handleEditCollection"
+      />
+    </div>
+  </Dialog>
+
   <OverlayPanel
     ref="collectionOverlayPanel"
     class="dark:bg-app-dark z-50 border-none font-semibold"
   >
     <div
-      @click=""
+      @click="handleCollectionEdit"
       class="flex cursor-pointer gap-4 rounded-lg p-2 text-sm hover:bg-gray-700/20 dark:text-white"
     >
       <div>
