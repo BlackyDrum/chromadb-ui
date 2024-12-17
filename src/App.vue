@@ -195,7 +195,7 @@ const handleCollectionSelection = (collection) => {
         currentCollectionData.value.push({
           id,
           document: documents[index],
-          metadata: metadatas[index],
+          metadata: JSON.stringify(metadatas[index]),
         });
       });
     })
@@ -396,6 +396,47 @@ const handleEditCollection = () => {
         detail: `Collection updated`,
         life: 5000,
       });
+    })
+    .catch((error) => {
+      const errorMessage = getErrorMessage(error);
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Unable to edit collection. Reason: ${errorMessage}`,
+        life: 5000,
+      });
+    });
+};
+
+const onEmbeddingCellEditComplete = (event) => {
+  const embedding = currentCollectionData.value.find(
+    (embedding) => embedding.id === event.data.id,
+  );
+
+  if (event.field === "document") embedding.document = event.newValue;
+  else if (event.field === "metadata") {
+    try {
+      JSON.parse(event.newValue);
+    } catch (_) {
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Metadata must be valid JSON`,
+        life: 5000,
+      });
+
+      return;
+    }
+
+    embedding.metadata = event.newValue;
+  }
+
+  axios
+    .post(`${collectionBaseUrl.value}/${currentCollection.value.id}/update`, {
+      documents: [embedding.document],
+      ids: [embedding.id],
+      metadatas: [JSON.parse(embedding.metadata)],
     })
     .catch((error) => {
       const errorMessage = getErrorMessage(error);
@@ -618,7 +659,12 @@ const handleEditCollection = () => {
 
     <div class="p-4 sm:ml-64">
       <div class="rounded-lg p-4">
-        <DataTable showGridlines :value="currentCollectionData">
+        <DataTable
+          showGridlines
+          editMode="cell"
+          @cell-edit-complete="onEmbeddingCellEditComplete"
+          :value="currentCollectionData"
+        >
           <template #empty>
             {{
               currentCollection
@@ -627,10 +673,17 @@ const handleEditCollection = () => {
             }}
           </template>
           <Column field="id" header="ID" headerStyle="width: 10rem"></Column>
-          <Column field="document" header="Document"></Column>
+          <Column field="document" header="Document">
+            <template #editor="{ data, field }">
+              <InputText v-model="data[field]" autofocus fluid />
+            </template>
+          </Column>
           <Column field="metadata" header="Metadata">
             <template #body="slotProps">
-              {{ JSON.stringify(slotProps.data.metadata) }}
+              {{ slotProps.data.metadata ?? "null" }}
+            </template>
+            <template #editor="{ data, field }">
+              <InputText v-model="data[field]" autofocus fluid />
             </template>
           </Column>
           <Column header="Action" headerStyle="width: 10rem"></Column>
