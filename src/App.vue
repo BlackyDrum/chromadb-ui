@@ -172,10 +172,20 @@ const retrieveCollections = () => {
   });
 };
 
-const handleCollectionSelection = (collection) => {
+const update = () => {
+  retrieveCollections();
+
+  if (currentCollection.value) {
+    handleCollectionSelection(currentCollection.value, true);
+  }
+};
+
+const handleCollectionSelection = (collection, isUpdating = false) => {
   if (
     isFetchingCollectionData.value ||
-    (currentCollection.value && currentCollection.value.id === collection.id)
+    (currentCollection.value &&
+      currentCollection.value.id === collection.id &&
+      !isUpdating)
   )
     return;
 
@@ -598,7 +608,7 @@ const onEmbeddingCellEditComplete = (event) => {
         <div class="ml-4 self-center font-semibold">ChromaDB UI</div>
       </div>
       <div class="ml-4 flex select-none gap-1 px-3 py-4">
-        <Button icon="pi pi-refresh" @click="retrieveCollections" />
+        <Button icon="pi pi-refresh" @click="update" />
         <Button
           class="w-full"
           label="Create Collection"
