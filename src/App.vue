@@ -54,6 +54,8 @@ const isEditingCollection = ref(false);
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
 
+const embeddingDataTable = ref();
+
 onBeforeMount(() => {
   retrieveConnectionParameters();
 });
@@ -489,6 +491,10 @@ const deleteEmbedding = (id) => {
       });
     });
 };
+
+const exportCSV = event => {
+  embeddingDataTable.value.exportCSV();
+}
 </script>
 
 <template>
@@ -609,7 +615,7 @@ const deleteEmbedding = (id) => {
       data-drawer-toggle="default-sidebar"
       aria-controls="default-sidebar"
       type="button"
-      class="ms-3 mt-2 inline-flex items-center rounded-lg p-2 text-sm text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 sm:hidden dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
+      class="ms-3 mt-2 inline-flex items-center rounded-lg p-2 text-sm text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 md:hidden dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
     >
       <span class="sr-only">Open sidebar</span>
       <svg
@@ -628,7 +634,7 @@ const deleteEmbedding = (id) => {
     </Button>
     <aside
       id="default-sidebar"
-      class="scroll-container fixed left-0 top-0 z-40 flex h-screen w-64 -translate-x-full flex-col border-r-2 border-gray-400 transition-transform sm:translate-x-0"
+      class="scroll-container fixed left-0 top-0 z-40 flex h-screen w-64 -translate-x-full flex-col border-r-2 border-gray-400 transition-transform md:translate-x-0"
       aria-label="Sidebar"
     >
       <div class="ml-4 mt-2 flex select-none px-3 py-3">
@@ -697,9 +703,10 @@ const deleteEmbedding = (id) => {
       </div>
     </aside>
 
-    <div class="p-4 sm:ml-64">
+    <div class="p-4 md:ml-64">
       <div class="rounded-lg p-4">
         <DataTable
+          ref="embeddingDataTable"
           showGridlines
           editMode="cell"
           paginator
@@ -714,13 +721,18 @@ const deleteEmbedding = (id) => {
           :value="currentCollectionData"
         >
           <template #header>
-            <div class="flex justify-end">
-              <IconField>
-                <InputIcon>
-                  <i class="pi pi-search" />
-                </InputIcon>
-                <InputText v-model="filters['global'].value" placeholder="Keyword Search" />
-              </IconField>
+            <div class="flex w-full justify-between">
+              <div>
+                <Button icon="pi pi-external-link" label="Export" @click="exportCSV($event)" />
+              </div>
+              <div>
+                <IconField>
+                  <InputIcon>
+                    <i class="pi pi-search" />
+                  </InputIcon>
+                  <InputText v-model="filters['global'].value" placeholder="Keyword Search" />
+                </IconField>
+              </div>
             </div>
           </template>
           <template #empty>
