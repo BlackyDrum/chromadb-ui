@@ -6,6 +6,7 @@ import axios from "axios";
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
+import { FilterMatchMode } from '@primevue/core/api'
 
 import {
   Button,
@@ -13,6 +14,8 @@ import {
   Column,
   Dialog,
   InputText,
+  InputIcon,
+  IconField,
   FloatLabel,
   Textarea,
   OverlayPanel,
@@ -21,6 +24,10 @@ import {
 
 const toast = useToast();
 const confirm = useConfirm();
+
+const filters = ref({
+  global: { value: null, matchMode: FilterMatchMode.CONTAINS }
+});
 
 const url = ref("http://localhost:8080");
 const apiUrl = ref("");
@@ -695,9 +702,27 @@ const deleteEmbedding = (id) => {
         <DataTable
           showGridlines
           editMode="cell"
+          paginator
+          :rows="10"
+          :rowsPerPageOptions="[5, 10, 20, 50, 100]"
+          resizableColumns
+          columnResizeMode="fit"
+          stateStorage="local"
+          stateKey="dt-state-chromadb-ui"
+          v-model:filters="filters"
           @cell-edit-complete="onEmbeddingCellEditComplete"
           :value="currentCollectionData"
         >
+          <template #header>
+            <div class="flex justify-end">
+              <IconField>
+                <InputIcon>
+                  <i class="pi pi-search" />
+                </InputIcon>
+                <InputText v-model="filters['global'].value" placeholder="Keyword Search" />
+              </IconField>
+            </div>
+          </template>
           <template #empty>
             {{
               currentCollection
@@ -705,13 +730,18 @@ const deleteEmbedding = (id) => {
                 : "Please select a collection"
             }}
           </template>
-          <Column field="id" header="ID" headerStyle="width: 10rem"></Column>
-          <Column field="document" header="Document">
+          <Column
+            field="id"
+            header="ID"
+            sortable
+            headerStyle="width: 10rem"
+          ></Column>
+          <Column field="document" header="Document" sortable>
             <template #editor="{ data, field }">
               <InputText v-model="data[field]" autofocus fluid />
             </template>
           </Column>
-          <Column field="metadata" header="Metadata">
+          <Column field="metadata" header="Metadata" sortable>
             <template #body="slotProps">
               {{ slotProps.data.metadata ?? "null" }}
             </template>
@@ -719,12 +749,14 @@ const deleteEmbedding = (id) => {
               <InputText v-model="data[field]" autofocus fluid />
             </template>
           </Column>
-          <Column header="Delete" headerStyle="width: 10rem">
+          <Column header="" headerStyle="width: 5rem">
             <template #body="slotProps">
-              <span
-                class="pi pi-trash cursor-pointer text-red-500"
-                @click="deleteEmbedding(slotProps.data.id)"
-              ></span>
+              <div class="flex">
+                <span
+                  class="pi pi-trash mx-auto cursor-pointer text-red-500"
+                  @click="deleteEmbedding(slotProps.data.id)"
+                ></span>
+              </div>
             </template>
           </Column>
         </DataTable>
