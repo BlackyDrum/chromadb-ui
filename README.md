@@ -8,6 +8,8 @@
 
 ![ui7](https://github.com/user-attachments/assets/7ff34407-40e7-41f9-bec5-56fc1989c4ac)
 
+![ui8](https://github.com/user-attachments/assets/9f4884b9-ad2b-4c87-a2f4-8f16993adb9c)
+
 ---
 
 ### Getting Started
