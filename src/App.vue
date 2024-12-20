@@ -459,6 +459,29 @@ const onEmbeddingCellEditComplete = (event) => {
       });
     });
 };
+
+const deleteEmbedding = (id) => {
+  axios
+    .post(`${collectionBaseUrl.value}/${currentCollection.value.id}/delete`, {
+      ids: [id],
+    })
+    .then((response) => {
+      const idx = currentCollectionData.value.findIndex(
+        (embedding) => embedding.id === id,
+      );
+      currentCollectionData.value.splice(idx, 1);
+    })
+    .catch((error) => {
+      const errorMessage = getErrorMessage(error);
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Unable to edit collection. Reason: ${errorMessage}`,
+        life: 5000,
+      });
+    });
+};
 </script>
 
 <template>
@@ -696,7 +719,14 @@ const onEmbeddingCellEditComplete = (event) => {
               <InputText v-model="data[field]" autofocus fluid />
             </template>
           </Column>
-          <Column header="Action" headerStyle="width: 10rem"></Column>
+          <Column header="Delete" headerStyle="width: 10rem">
+            <template #body="slotProps">
+              <span
+                class="pi pi-trash cursor-pointer text-red-500"
+                @click="deleteEmbedding(slotProps.data.id)"
+              ></span>
+            </template>
+          </Column>
         </DataTable>
       </div>
     </div>
