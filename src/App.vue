@@ -327,7 +327,7 @@ const handleCollectionDeletion = () => {
       axios
         .delete(`${collectionBaseUrl.value}/${selectedCollection.value.name}`)
         .then((response) => {
-          if (selectedCollection.value.id === currentCollection.value.id) {
+          if (selectedCollection.value.id === currentCollection.value?.id) {
             currentCollection.value = null;
             currentCollectionData.value = null;
           }
