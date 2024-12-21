@@ -174,11 +174,22 @@ const initializeTenantAndDatabase = () => {
 };
 
 const retrieveCollections = () => {
-  axios.get(collectionBaseUrl.value).then((response) => {
+  axios.get(collectionBaseUrl.value)
+    .then((response) => {
     collections.value = response.data.sort((col1, col2) => {
       return col1.name <= col2.name ? -1 : 1;
     });
-  });
+  })
+    .catch(error => {
+      const errorMessage = getErrorMessage(error);
+
+      toast.add({
+        severity: "error",
+        summary: "Error",
+        detail: `Unable to connect to the server. Reason: ${errorMessage}`,
+        life: 5000,
+      });
+    })
 };
 
 const update = () => {
@@ -397,6 +408,8 @@ const handleEditCollection = () => {
     return;
   }
 
+  isEditingCollection.value = true;
+
   axios
     .put(`${collectionBaseUrl.value}/${selectedCollection.value.id}`, {
       new_name: editCollectionData.value.name,
@@ -425,6 +438,9 @@ const handleEditCollection = () => {
         detail: `Unable to edit collection. Reason: ${errorMessage}`,
         life: 5000,
       });
+    })
+    .finally(() => {
+      isEditingCollection.value = false;
     });
 };
 
@@ -432,6 +448,9 @@ const onEmbeddingCellEditComplete = (event) => {
   const embedding = currentCollectionData.value.find(
     (embedding) => embedding.id === event.data.id,
   );
+
+  const oldDocument = embedding.document;
+  const oldMetadata = embedding.metadata;
 
   if (event.field === "document") embedding.document = event.newValue;
   else if (event.field === "metadata") {
@@ -458,12 +477,15 @@ const onEmbeddingCellEditComplete = (event) => {
       metadatas: [JSON.parse(embedding.metadata)],
     })
     .catch((error) => {
+      embedding.document = oldDocument;
+      embedding.metadata = oldMetadata;
+
       const errorMessage = getErrorMessage(error);
 
       toast.add({
         severity: "error",
         summary: "Error",
-        detail: `Unable to edit collection. Reason: ${errorMessage}`,
+        detail: `Unable to edit embedding. Reason: ${errorMessage}`,
         life: 5000,
       });
     });
@@ -486,7 +508,7 @@ const deleteEmbedding = (id) => {
       toast.add({
         severity: "error",
         summary: "Error",
-        detail: `Unable to edit collection. Reason: ${errorMessage}`,
+        detail: `Unable to delete embedding. Reason: ${errorMessage}`,
         life: 5000,
       });
     });
@@ -820,6 +842,7 @@ const exportCSV = event => {
         :icon="isCreatingCollection ? 'pi pi-spin pi-spinner' : ''"
         label="Create Collection"
         severity="info"
+        :disabled="isCreatingCollection"
         @click="handleCreateCollection"
       />
     </div>
@@ -861,6 +884,7 @@ const exportCSV = event => {
         :icon="isEditingCollection ? 'pi pi-spin pi-spinner' : ''"
         label="Edit Collection"
         severity="info"
+        :disabled="isEditingCollection"
         @click="handleEditCollection"
       />
     </div>
