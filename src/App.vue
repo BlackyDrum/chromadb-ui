@@ -653,6 +653,11 @@ const exportCSV = event => {
           @click="handleCreateCollectionButtonClick"
         />
       </div>
+      <div class="ml-4 flex select-none">
+        <small class="opacity-70">
+          Collection count: {{collections.length}}
+        </small>
+      </div>
       <div class="h-full overflow-y-auto bg-black px-3 py-2">
         <ul class="space-y-2 font-medium">
           <li
@@ -733,6 +738,9 @@ const exportCSV = event => {
                   <InputText v-model="filters['global'].value" placeholder="Keyword Search" />
                 </IconField>
               </div>
+            </div>
+            <div class="mt-1">
+              <small class="opacity-70">Embedding count: {{currentCollectionData?.length ?? 0}}</small>
             </div>
           </template>
           <template #empty>
