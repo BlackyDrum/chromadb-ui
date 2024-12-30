@@ -452,6 +452,9 @@ const onEmbeddingCellEditComplete = (event) => {
   const oldDocument = embedding.document;
   const oldMetadata = embedding.metadata;
 
+  if (event.field === "document" && oldDocument === event.newValue) return;
+  if (event.field === "metadata" && oldMetadata === event.newValue) return;
+
   if (event.field === "document") embedding.document = event.newValue;
   else if (event.field === "metadata") {
     try {
