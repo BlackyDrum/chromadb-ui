@@ -1,12 +1,18 @@
 services:
   chromadb:
-    image: "chromadb/chroma:0.6.2"
+    image: chromadb/chroma:latest
     ports:
-      - "8080:8000"
+      - 8080:8000
     volumes:
       - chroma-data:/chroma/chroma
     environment:
       - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["http://localhost:8090"]
+  chromadb-ui:
+    build: .
+    ports:
+      - 8090:80
+    environment:
+      - VITE_PORT=8090
 volumes:
   chroma-data:
     driver: local

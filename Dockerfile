@@ -25,8 +25,8 @@ ENV VITE_PORT=8090
 # Copy the built application from the previous stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Expose port 8090
-EXPOSE 8090
+# Expose port 80 (Nginx default port)
+EXPOSE 80
 
 # Start Nginx server
 CMD ["nginx", "-g", "daemon off;"]
