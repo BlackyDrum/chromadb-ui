@@ -28,7 +28,7 @@ npm install
 
 3. Start the development server
 ```sh
-npm run dev
+VITE_PORT=8090 npm run dev
 ```
 
 ## Using Docker Compose for ChromaDB
@@ -54,7 +54,7 @@ docker pull ghcr.io/<your-github-username>/chromadb-ui:latest
 ### Run the Docker container
 
 ```sh
-docker run -p 80:80 ghcr.io/<your-github-username>/chromadb-ui:latest
+docker run -e VITE_PORT=8090 -p 8090:8090 ghcr.io/<your-github-username>/chromadb-ui:latest
 ```
 
 Replace `<your-github-username>` with your actual GitHub username.
@@ -73,7 +73,7 @@ environment:
 Change the dev script to specify the new port
 ```json
 "scripts": {
-    "dev": "vite --port 8090"
+    "dev": "vite --port $VITE_PORT"
 }
 ```
 

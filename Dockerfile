@@ -19,11 +19,14 @@ RUN npm run build
 # Use an official Nginx image as the base image for serving the built application
 FROM nginx:alpine
 
+# Set the environment variable for the port
+ENV VITE_PORT=8090
+
 # Copy the built application from the previous stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Expose port 80
-EXPOSE 80
+# Expose port 8090
+EXPOSE 8090
 
 # Start Nginx server
 CMD ["nginx", "-g", "daemon off;"]
