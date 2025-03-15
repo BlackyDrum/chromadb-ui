@@ -41,6 +41,24 @@ docker-compose up -d
 ```
 This will start a ChromaDB instance and expose it on the appropriate port.
 
+## Using Docker
+
+You can also run ChromaDB UI using Docker. The Docker image is built and pushed to the GitHub Container Registry.
+
+### Pull the Docker image
+
+```sh
+docker pull ghcr.io/<your-github-username>/chromadb-ui:latest
+```
+
+### Run the Docker container
+
+```sh
+docker run -p 80:80 ghcr.io/<your-github-username>/chromadb-ui:latest
+```
+
+Replace `<your-github-username>` with your actual GitHub username.
+
 ### Troubleshooting CORS Issues
 If you encounter issues such as CORS errors while running the application, you can resolve them by changing the port configuration:
 
