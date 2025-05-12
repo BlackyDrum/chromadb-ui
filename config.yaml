@@ -1,0 +1,2 @@
+persist_path: "/data"
+cors_allow_origins: ["http://localhost:8090"]

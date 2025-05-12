@@ -13,50 +13,52 @@
 ---
 
 ### Getting Started
+
 Follow these steps to run ChromaDB UI locally.
 
 1. Clone the repository
+
 ```sh
 git clone https://github.com/BlackyDrum/chromadb-ui.git
 cd chromadb-ui
 ```
 
 2. Install dependencies
+
 ```sh
 npm install
 ```
 
 3. Start the development server
+
 ```sh
 npm run dev
 ```
 
 ## Using Docker Compose for ChromaDB
+
 This repository includes a `docker-compose.yml` file that simplifies starting a ChromaDB container.
 
 1. Ensure Docker is installed and running on your machine.
 2. Start the ChromaDB container using the following command
+
 ```sh
 docker-compose up -d
 ```
+
 This will start a ChromaDB instance and expose it on the appropriate port.
 
-### Troubleshooting CORS Issues
-If you encounter issues such as CORS errors while running the application, you can resolve them by changing the port configuration:
+## Troubleshooting CORS Issues
 
-1. **Update the Docker Compose file** <br>
-Modify the `CHROMA_SERVER_CORS_ALLOW_ORIGINS` environment variable to include the new port:
+If you encounter CORS errors while running the application, you'll need to ensure that the Chroma backend allows requests from the correct frontend origin.
+
+### Update the Chroma config file (`config.yaml`)
+
+Modify the `cors_allow_origins` field to match the port your frontend is running on:
+
 ```yml
-environment:
-    - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["http://localhost:8090"]
-```
-
-2. **Update the `package.json`** <br>
-Change the dev script to specify the new port
-```json
-"scripts": {
-    "dev": "vite --port 8090"
-}
+persist_path: "/data"
+cors_allow_origins: ["http://localhost:8090"] # Change to your actual frontend port
 ```
 
 After making these changes, restart both the Docker container and the Vite development server. This should resolve the CORS issue.

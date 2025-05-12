@@ -6,7 +6,7 @@ import axios from "axios";
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
 import { useConfirm } from "primevue/useconfirm";
-import { FilterMatchMode } from '@primevue/core/api'
+import { FilterMatchMode } from "@primevue/core/api";
 
 import {
   Button,
@@ -26,7 +26,7 @@ const toast = useToast();
 const confirm = useConfirm();
 
 const filters = ref({
-  global: { value: null, matchMode: FilterMatchMode.CONTAINS }
+  global: { value: null, matchMode: FilterMatchMode.CONTAINS },
 });
 
 const url = ref("http://localhost:8080");
@@ -34,6 +34,7 @@ const apiUrl = ref("");
 const collectionBaseUrl = ref("");
 const tenant = ref("default_database");
 const database = ref("default_tenant");
+const version = ref("");
 
 const collections = ref([]);
 const currentCollection = ref(null);
@@ -95,6 +96,10 @@ const handleConnectionInitialization = () => {
       initializeTenantAndDatabase();
 
       retrieveCollections();
+
+      axios.get(`${apiUrl.value}/version`).then((response) => {
+        version.value = response.data;
+      });
 
       connected.value = true;
     })
@@ -174,13 +179,14 @@ const initializeTenantAndDatabase = () => {
 };
 
 const retrieveCollections = () => {
-  axios.get(collectionBaseUrl.value)
+  axios
+    .get(collectionBaseUrl.value)
     .then((response) => {
-    collections.value = response.data.sort((col1, col2) => {
-      return col1.name <= col2.name ? -1 : 1;
-    });
-  })
-    .catch(error => {
+      collections.value = response.data.sort((col1, col2) => {
+        return col1.name <= col2.name ? -1 : 1;
+      });
+    })
+    .catch((error) => {
       const errorMessage = getErrorMessage(error);
 
       toast.add({
@@ -189,7 +195,7 @@ const retrieveCollections = () => {
         detail: `Unable to connect to the server. Reason: ${errorMessage}`,
         life: 5000,
       });
-    })
+    });
 };
 
 const update = () => {
@@ -517,9 +523,9 @@ const deleteEmbedding = (id) => {
     });
 };
 
-const exportCSV = event => {
+const exportCSV = (event) => {
   embeddingDataTable.value.exportCSV();
-}
+};
 </script>
 
 <template>
@@ -668,6 +674,9 @@ const exportCSV = event => {
         </div>
         <div class="ml-4 self-center font-semibold">ChromaDB UI</div>
       </div>
+      <div class="ml-4 select-none text-xs opacity-50">
+        ChromaDB Version: {{ version }}
+      </div>
       <div class="ml-4 flex select-none gap-1 px-3 py-4">
         <Button icon="pi pi-refresh" @click="update" />
         <Button
@@ -680,7 +689,7 @@ const exportCSV = event => {
       </div>
       <div class="ml-4 flex select-none">
         <small class="opacity-70">
-          Collection count: {{collections.length}}
+          Collection count: {{ collections.length }}
         </small>
       </div>
       <div class="h-full overflow-y-auto bg-black px-3 py-2">
@@ -753,19 +762,29 @@ const exportCSV = event => {
           <template #header>
             <div class="flex w-full justify-between">
               <div>
-                <Button icon="pi pi-external-link" label="Export" @click="exportCSV($event)" />
+                <Button
+                  icon="pi pi-external-link"
+                  label="Export"
+                  @click="exportCSV($event)"
+                />
               </div>
               <div>
                 <IconField>
                   <InputIcon>
                     <i class="pi pi-search" />
                   </InputIcon>
-                  <InputText v-model="filters['global'].value" placeholder="Keyword Search" />
+                  <InputText
+                    v-model="filters['global'].value"
+                    placeholder="Keyword Search"
+                  />
                 </IconField>
               </div>
             </div>
             <div class="mt-1">
-              <small class="opacity-70">Embedding count: {{currentCollectionData?.length ?? 0}}</small>
+              <small class="opacity-70"
+                >Embedding count:
+                {{ currentCollectionData?.length ?? 0 }}</small
+              >
             </div>
           </template>
           <template #empty>
