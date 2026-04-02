@@ -35,6 +35,12 @@ const currentCollectionData = ref([]);
 const createCollectionData = ref({ name: null, metadata: null });
 const editCollectionData = ref({ name: null, metadata: null });
 const selectedCollection = ref(null);
+const embeddingPreviewCache = ref({});
+const embeddingVectorCache = ref({});
+const loadingEmbeddingPreviewIds = ref({});
+const embeddingDialog = ref({ visible: false, id: null });
+const embeddingDialogOffset = ref(0);
+const expandedEmbeddingRows = ref({});
 
 const collectionOverlayPanel = ref();
 const embeddingDataTable = ref();
@@ -76,6 +82,10 @@ onBeforeMount(() => {
   retrieveConnectionParameters();
 });
 
+const EMBEDDING_PREVIEW_SAMPLE_COUNT = 6;
+const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
+const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
+
 const safeStringify = (value, pretty = false) => {
   if (value === null || value === undefined) return "null";
 
@@ -88,8 +98,138 @@ const safeStringify = (value, pretty = false) => {
 
 const formatNumber = (value) => new Intl.NumberFormat().format(value ?? 0);
 
+const formatEmbeddingNumber = (value) => {
+  if (!Number.isFinite(value)) return String(value);
+
+  if (value === 0) return "0";
+  if (Math.abs(value) >= 1000 || Math.abs(value) < 0.001) {
+    return value.toExponential(2);
+  }
+
+  return value.toFixed(4).replace(/\.?0+$/, "");
+};
+
 const getCollectionInitial = (name) =>
   (name?.trim()?.charAt(0) ?? "C").toUpperCase();
+
+const resetEmbeddingViews = () => {
+  embeddingPreviewCache.value = {};
+  embeddingVectorCache.value = {};
+  loadingEmbeddingPreviewIds.value = {};
+  embeddingDialog.value = { visible: false, id: null };
+  embeddingDialogOffset.value = 0;
+  expandedEmbeddingRows.value = {};
+};
+
+const getEmbeddingPreview = (id) => {
+  return embeddingPreviewCache.value[id] ?? null;
+};
+
+const isEmbeddingPreviewLoading = (id) => {
+  return Boolean(loadingEmbeddingPreviewIds.value[id]);
+};
+
+const buildEmbeddingSparkline = (values) => {
+  if (!values.length) return "";
+
+  const width = 132;
+  const height = 40;
+  const padding = 4;
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+
+  return values
+    .map((value, index) => {
+      const x =
+        values.length === 1
+          ? width / 2
+          : padding +
+            (index * (width - padding * 2)) / (values.length - 1);
+      const y =
+        height -
+        padding -
+        ((value - minValue) / range) * (height - padding * 2);
+
+      return `${x},${y}`;
+    })
+    .join(" ");
+};
+
+const sampleEmbeddingValues = (vector, sampleCount = EMBEDDING_PREVIEW_SAMPLE_COUNT) => {
+  if (!Array.isArray(vector) || !vector.length) return [];
+
+  if (vector.length <= sampleCount) {
+    return vector.map((value, index) => ({ index, value }));
+  }
+
+  const step = (vector.length - 1) / (sampleCount - 1);
+
+  return Array.from({ length: sampleCount }, (_, sampleIndex) => {
+    const index = Math.min(
+      vector.length - 1,
+      Math.round(sampleIndex * step),
+    );
+
+    return {
+      index,
+      value: vector[index],
+    };
+  });
+};
+
+const buildEmbeddingPreview = (vector) => {
+  if (!Array.isArray(vector) || !vector.length) {
+    return {
+      dimensions: 0,
+      min: null,
+      max: null,
+      norm: null,
+      sampleValues: [],
+      sparklinePoints: "",
+    };
+  }
+
+  let min = Infinity;
+  let max = -Infinity;
+  let normSquareSum = 0;
+
+  for (const value of vector) {
+    if (!Number.isFinite(value)) continue;
+
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+    normSquareSum += value * value;
+  }
+
+  const sampleValues = sampleEmbeddingValues(vector).map(({ index, value }) => ({
+    index,
+    value,
+    label: formatEmbeddingNumber(value),
+  }));
+
+  return {
+    dimensions: vector.length,
+    min,
+    minLabel: Number.isFinite(min) ? formatEmbeddingNumber(min) : "n/a",
+    max,
+    maxLabel: Number.isFinite(max) ? formatEmbeddingNumber(max) : "n/a",
+    norm: Math.sqrt(normSquareSum),
+    normLabel: formatEmbeddingNumber(Math.sqrt(normSquareSum)),
+    sampleValues,
+    sparklinePoints: buildEmbeddingSparkline(
+      sampleValues.map((sample) => sample.value),
+    ),
+  };
+};
+
+const getEmbeddingSummaryText = (id) => {
+  const preview = getEmbeddingPreview(id);
+
+  if (!preview) return "Vector preview available on demand";
+
+  return `${formatNumber(preview.dimensions)} dims • norm ${preview.normLabel}`;
+};
 
 const getCollectionMetadataLabel = (collection) => {
   const metadata = collection?.metadata;
@@ -134,7 +274,7 @@ const workspaceSubtitle = computed(() => {
     return "Pick a collection from the left rail to inspect embeddings, clean up metadata, and export rows without leaving the workspace.";
   }
 
-  return `${formatNumber(currentCollectionData.value.length)} embeddings loaded for live editing in ${currentCollection.value.name}.`;
+  return `${formatNumber(currentCollectionData.value.length)} records loaded in ${currentCollection.value.name}, with vector previews available on demand.`;
 });
 
 const activeCollectionMetadataLabel = computed(() => {
@@ -178,6 +318,65 @@ const dashboardMetrics = computed(() => {
       description: `${tenant.value} / ${database.value}`,
     },
   ];
+});
+
+const activeEmbeddingVector = computed(() => {
+  if (!embeddingDialog.value.id) return [];
+
+  return embeddingVectorCache.value[embeddingDialog.value.id] ?? [];
+});
+
+const activeEmbeddingPreview = computed(() => {
+  if (!embeddingDialog.value.id) return null;
+
+  return embeddingPreviewCache.value[embeddingDialog.value.id] ?? null;
+});
+
+const activeEmbeddingWindow = computed(() => {
+  return activeEmbeddingVector.value.slice(
+    embeddingDialogOffset.value,
+    embeddingDialogOffset.value + EMBEDDING_DIALOG_WINDOW_SIZE,
+  );
+});
+
+const activeEmbeddingWindowRange = computed(() => {
+  if (!activeEmbeddingVector.value.length) {
+    return "No values loaded";
+  }
+
+  const start = embeddingDialogOffset.value + 1;
+  const end = Math.min(
+    embeddingDialogOffset.value + EMBEDDING_DIALOG_WINDOW_SIZE,
+    activeEmbeddingVector.value.length,
+  );
+
+  return `Showing ${formatNumber(start)}-${formatNumber(end)} of ${formatNumber(activeEmbeddingVector.value.length)} values`;
+});
+
+const activeEmbeddingChunks = computed(() => {
+  return Array.from(
+    {
+      length: Math.ceil(
+        activeEmbeddingWindow.value.length / EMBEDDING_DIALOG_CHUNK_SIZE,
+      ),
+    },
+    (_, chunkIndex) => {
+      const start =
+        embeddingDialogOffset.value + chunkIndex * EMBEDDING_DIALOG_CHUNK_SIZE;
+      const values = activeEmbeddingWindow.value
+        .slice(
+          chunkIndex * EMBEDDING_DIALOG_CHUNK_SIZE,
+          (chunkIndex + 1) * EMBEDDING_DIALOG_CHUNK_SIZE,
+        )
+        .map((value) => formatEmbeddingNumber(value));
+
+      return {
+        start,
+        end: start + values.length - 1,
+        values,
+      };
+    },
+  );
 });
 
 const connectionFacts = computed(() => {
@@ -274,6 +473,7 @@ const retrieveCollections = async () => {
 
     if (!refreshedCurrentCollection) {
       currentCollectionData.value = [];
+      resetEmbeddingViews();
     }
   } catch (error) {
     toast.add({
@@ -281,6 +481,117 @@ const retrieveCollections = async () => {
       summary: "Error",
       detail: `Unable to retrieve collections. Reason: ${getErrorMessage(error)}`,
       life: 5000,
+    });
+  }
+};
+
+const loadEmbeddingPreview = async (id) => {
+  if (
+    !currentCollection.value ||
+    embeddingPreviewCache.value[id] ||
+    loadingEmbeddingPreviewIds.value[id]
+  ) {
+    return;
+  }
+
+  loadingEmbeddingPreviewIds.value = {
+    ...loadingEmbeddingPreviewIds.value,
+    [id]: true,
+  };
+
+  try {
+    const response = await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/get`,
+      {
+        ids: [id],
+        include: ["embeddings"],
+      },
+    );
+
+    const embedding = response.data?.embeddings?.[0] ?? null;
+
+    if (!Array.isArray(embedding) || !embedding.length) {
+      toast.add({
+        severity: "warn",
+        summary: "Embedding unavailable",
+        detail: `No embedding values were returned for record ${id}.`,
+        life: 5000,
+      });
+
+      return;
+    }
+
+    embeddingVectorCache.value = {
+      ...embeddingVectorCache.value,
+      [id]: embedding,
+    };
+    embeddingPreviewCache.value = {
+      ...embeddingPreviewCache.value,
+      [id]: buildEmbeddingPreview(embedding),
+    };
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: `Unable to load embedding preview. Reason: ${getErrorMessage(error)}`,
+      life: 5000,
+    });
+  } finally {
+    const nextLoadingState = { ...loadingEmbeddingPreviewIds.value };
+    delete nextLoadingState[id];
+    loadingEmbeddingPreviewIds.value = nextLoadingState;
+  }
+};
+
+const openEmbeddingDialog = async (id) => {
+  embeddingDialog.value = { visible: true, id };
+  embeddingDialogOffset.value = 0;
+
+  if (!embeddingPreviewCache.value[id]) {
+    await loadEmbeddingPreview(id);
+  }
+};
+
+const closeEmbeddingDialog = () => {
+  embeddingDialog.value = { visible: false, id: null };
+  embeddingDialogOffset.value = 0;
+};
+
+const handleEmbeddingRowExpand = async (event) => {
+  await loadEmbeddingPreview(event.data.id);
+};
+
+const moveEmbeddingDialogWindow = (direction) => {
+  const nextOffset =
+    embeddingDialogOffset.value + direction * EMBEDDING_DIALOG_WINDOW_SIZE;
+
+  embeddingDialogOffset.value = Math.max(
+    0,
+    Math.min(
+      nextOffset,
+      Math.max(0, activeEmbeddingVector.value.length - EMBEDDING_DIALOG_WINDOW_SIZE),
+    ),
+  );
+};
+
+const copyActiveEmbedding = async () => {
+  if (!activeEmbeddingVector.value.length || !navigator?.clipboard) return;
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(activeEmbeddingVector.value));
+
+    toast.add({
+      severity: "success",
+      summary: "Copied",
+      detail: "Embedding vector copied to the clipboard.",
+      life: 3000,
+    });
+  } catch (_) {
+    toast.add({
+      severity: "error",
+      summary: "Clipboard error",
+      detail: "Unable to copy the embedding vector.",
+      life: 4000,
     });
   }
 };
@@ -345,6 +656,7 @@ const handleDisconnect = () => {
   filters.value.global.value = null;
   collectionSearch.value = "";
   mobileSidebarOpen.value = false;
+  resetEmbeddingViews();
 };
 
 const update = async () => {
@@ -369,11 +681,14 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   currentCollectionData.value = [];
   mobileSidebarOpen.value = false;
   isFetchingCollectionData.value = true;
+  resetEmbeddingViews();
 
   try {
     const response = await axios.post(
       `${collectionBaseUrl.value}/${collection.id}/get`,
-      {},
+      {
+        include: ["documents", "metadatas"],
+      },
     );
     const { ids = [], documents = [], metadatas = [] } = response.data;
 
@@ -490,6 +805,7 @@ const handleCollectionDeletion = () => {
         if (selectedCollection.value.id === currentCollection.value?.id) {
           currentCollection.value = null;
           currentCollectionData.value = [];
+          resetEmbeddingViews();
         }
 
         const collectionIndex = collections.value.findIndex(
@@ -658,6 +974,13 @@ const deleteEmbedding = async (id) => {
 
     if (embeddingIndex !== -1) {
       currentCollectionData.value.splice(embeddingIndex, 1);
+    }
+
+    delete embeddingPreviewCache.value[id];
+    delete embeddingVectorCache.value[id];
+
+    if (embeddingDialog.value.id === id) {
+      closeEmbeddingDialog();
     }
   } catch (error) {
     toast.add({
@@ -1062,6 +1385,7 @@ const exportCSV = () => {
             editMode="cell"
             paginator
             scrollable
+            tableStyle="min-width: 58rem"
             :rows="10"
             :rowsPerPageOptions="[5, 10, 20, 50, 100]"
             :loading="isFetchingCollectionData"
@@ -1069,18 +1393,21 @@ const exportCSV = () => {
             columnResizeMode="fit"
             stateStorage="local"
             stateKey="dt-state-chromadb-ui"
+            dataKey="id"
             v-model:filters="filters"
+            v-model:expandedRows="expandedEmbeddingRows"
             :value="currentCollectionData"
             @cell-edit-complete="onEmbeddingCellEditComplete"
+            @row-expand="handleEmbeddingRowExpand"
           >
             <template #header>
               <div class="table-toolbar">
                 <div class="table-toolbar__copy">
                   <p class="section-kicker">Embedding explorer</p>
-                  <h2>Documents and metadata</h2>
+                  <h2>Documents, metadata, and vectors</h2>
                   <p>
-                    Search, edit, and export the rows loaded from the active
-                    collection.
+                    Search and edit the current records, then expand a row to
+                    inspect its vector without crowding the table.
                   </p>
                 </div>
 
@@ -1129,13 +1456,29 @@ const exportCSV = () => {
               </div>
             </template>
 
-            <Column field="id" header="ID" sortable headerStyle="width: 12rem">
+            <Column expander headerStyle="width: 3.75rem" />
+
+            <Column field="id" header="ID" sortable headerStyle="width: 11rem">
               <template #body="slotProps">
-                <div class="cell-id">{{ slotProps.data.id }}</div>
+                <div class="cell-id-wrap">
+                  <div class="cell-id">{{ slotProps.data.id }}</div>
+                  <button
+                    class="mini-button mini-button--ghost mini-button--inline"
+                    type="button"
+                    @click="openEmbeddingDialog(slotProps.data.id)"
+                  >
+                    Vector
+                  </button>
+                </div>
               </template>
             </Column>
 
-            <Column field="document" header="Document" sortable>
+            <Column
+              field="document"
+              header="Document"
+              sortable
+              headerStyle="width: 22rem"
+            >
               <template #body="slotProps">
                 <div class="cell-document">{{ slotProps.data.document }}</div>
               </template>
@@ -1150,7 +1493,12 @@ const exportCSV = () => {
               </template>
             </Column>
 
-            <Column field="metadata" header="Metadata" sortable>
+            <Column
+              field="metadata"
+              header="Metadata"
+              sortable
+              headerStyle="width: 20rem"
+            >
               <template #body="slotProps">
                 <code class="cell-json">{{
                   slotProps.data.metadata ?? "null"
@@ -1179,11 +1527,231 @@ const exportCSV = () => {
                 </button>
               </template>
             </Column>
+
+            <template #expansion="slotProps">
+              <div class="embedding-row-panel">
+                <div class="embedding-row-panel__header">
+                  <div>
+                    <p class="section-kicker">Embedding preview</p>
+                    <h3>{{ slotProps.data.id }}</h3>
+                    <p class="embedding-row-panel__copy">
+                      {{
+                        getEmbeddingPreview(slotProps.data.id)
+                          ? getEmbeddingSummaryText(slotProps.data.id)
+                          : "Loading a compact vector preview for this record."
+                      }}
+                    </p>
+                  </div>
+
+                  <div class="embedding-row-panel__actions">
+                    <button
+                      class="mini-button mini-button--ghost"
+                      type="button"
+                      :disabled="isEmbeddingPreviewLoading(slotProps.data.id)"
+                      @click="loadEmbeddingPreview(slotProps.data.id)"
+                    >
+                      <i
+                        :class="
+                          isEmbeddingPreviewLoading(slotProps.data.id)
+                            ? 'pi pi-spin pi-spinner'
+                            : 'pi pi-refresh'
+                        "
+                      ></i>
+                      <span>Refresh preview</span>
+                    </button>
+
+                    <button
+                      class="mini-button"
+                      type="button"
+                      @click="openEmbeddingDialog(slotProps.data.id)"
+                    >
+                      <span>Open full vector</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  v-if="isEmbeddingPreviewLoading(slotProps.data.id)"
+                  class="embedding-row-panel__loading"
+                >
+                  <i class="pi pi-spin pi-spinner"></i>
+                  <span>Loading vector preview...</span>
+                </div>
+
+                <div
+                  v-else-if="getEmbeddingPreview(slotProps.data.id)"
+                  class="embedding-preview embedding-preview--expanded"
+                >
+                  <div class="embedding-preview__header">
+                    <div class="embedding-preview__metrics">
+                      <span>
+                        {{
+                          formatNumber(
+                            getEmbeddingPreview(slotProps.data.id).dimensions,
+                          )
+                        }}
+                        dims
+                      </span>
+                      <span>
+                        norm {{ getEmbeddingPreview(slotProps.data.id).normLabel }}
+                      </span>
+                    </div>
+
+                    <div class="embedding-preview__range">
+                      <span>
+                        min {{ getEmbeddingPreview(slotProps.data.id).minLabel }}
+                      </span>
+                      <span>
+                        max {{ getEmbeddingPreview(slotProps.data.id).maxLabel }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <svg
+                    v-if="getEmbeddingPreview(slotProps.data.id).sparklinePoints"
+                    class="embedding-preview__sparkline embedding-preview__sparkline--wide"
+                    viewBox="0 0 132 40"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <polyline
+                      :points="
+                        getEmbeddingPreview(slotProps.data.id).sparklinePoints
+                      "
+                    />
+                  </svg>
+
+                  <div class="embedding-preview__samples">
+                    <div
+                      v-for="sample in getEmbeddingPreview(slotProps.data.id)
+                        .sampleValues"
+                      :key="`${slotProps.data.id}-${sample.index}`"
+                      class="embedding-preview__sample"
+                    >
+                      <span>v[{{ sample.index }}]</span>
+                      <strong>{{ sample.label }}</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
           </DataTable>
         </article>
       </section>
     </main>
   </div>
+
+  <Dialog
+    v-model:visible="embeddingDialog.visible"
+    modal
+    :draggable="false"
+    class="embedding-dialog"
+    @hide="closeEmbeddingDialog"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Embedding viewer</p>
+        <h2>{{ embeddingDialog.id ?? "No record selected" }}</h2>
+      </div>
+    </template>
+
+    <div class="dialog-body">
+      <div
+        v-if="isEmbeddingPreviewLoading(embeddingDialog.id)"
+        class="embedding-dialog__loading"
+      >
+        <i class="pi pi-spin pi-spinner"></i>
+        <span>Loading vector values...</span>
+      </div>
+
+      <template v-else-if="activeEmbeddingPreview">
+        <div class="embedding-dialog__summary">
+          <div class="embedding-summary-card">
+            <span>Dimensions</span>
+            <strong>{{ formatNumber(activeEmbeddingPreview.dimensions) }}</strong>
+          </div>
+          <div class="embedding-summary-card">
+            <span>Norm</span>
+            <strong>{{ activeEmbeddingPreview.normLabel }}</strong>
+          </div>
+          <div class="embedding-summary-card">
+            <span>Min</span>
+            <strong>{{ activeEmbeddingPreview.minLabel }}</strong>
+          </div>
+          <div class="embedding-summary-card">
+            <span>Max</span>
+            <strong>{{ activeEmbeddingPreview.maxLabel }}</strong>
+          </div>
+        </div>
+
+        <div class="embedding-dialog__toolbar">
+          <p>{{ activeEmbeddingWindowRange }}</p>
+
+          <div class="embedding-dialog__toolbar-actions">
+            <button
+              class="mini-button mini-button--ghost"
+              type="button"
+              :disabled="embeddingDialogOffset === 0"
+              @click="moveEmbeddingDialogWindow(-1)"
+            >
+              Previous
+            </button>
+
+            <button
+              class="mini-button mini-button--ghost"
+              type="button"
+              :disabled="
+                embeddingDialogOffset + EMBEDDING_DIALOG_WINDOW_SIZE >=
+                activeEmbeddingVector.length
+              "
+              @click="moveEmbeddingDialogWindow(1)"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
+        <div class="embedding-dialog__grid scroll-container">
+          <article
+            v-for="chunk in activeEmbeddingChunks"
+            :key="`${chunk.start}-${chunk.end}`"
+            class="embedding-vector-chunk"
+          >
+            <div class="embedding-vector-chunk__label">
+              v[{{ chunk.start }}-{{ chunk.end }}]
+            </div>
+            <code>{{ chunk.values.join(", ") }}</code>
+          </article>
+        </div>
+      </template>
+
+      <div v-else class="embedding-dialog__empty">
+        No embedding values are loaded for this record yet.
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          @click="closeEmbeddingDialog"
+        >
+          Close
+        </button>
+
+        <button
+          class="ui-button ui-button--secondary"
+          type="button"
+          :disabled="!activeEmbeddingVector.length"
+          @click="copyActiveEmbedding"
+        >
+          <i class="pi pi-copy"></i>
+          <span>Copy vector JSON</span>
+        </button>
+      </div>
+    </template>
+  </Dialog>
 
   <Dialog
     v-model:visible="showCreateCollectionForm"
