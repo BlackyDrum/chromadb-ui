@@ -63,7 +63,7 @@ const collectionSearch = ref("");
 const entryHighlights = [
   {
     label: "Inline edits",
-    value: "Documents and metadata",
+    value: "Documents, metadata and embeddings",
     description:
       "Update embeddings directly inside the table and sync changes back to Chroma.",
   },
@@ -150,8 +150,7 @@ const buildEmbeddingSparkline = (values) => {
       const x =
         values.length === 1
           ? width / 2
-          : padding +
-            (index * (width - padding * 2)) / (values.length - 1);
+          : padding + (index * (width - padding * 2)) / (values.length - 1);
       const y =
         height -
         padding -
@@ -162,7 +161,10 @@ const buildEmbeddingSparkline = (values) => {
     .join(" ");
 };
 
-const sampleEmbeddingValues = (vector, sampleCount = EMBEDDING_PREVIEW_SAMPLE_COUNT) => {
+const sampleEmbeddingValues = (
+  vector,
+  sampleCount = EMBEDDING_PREVIEW_SAMPLE_COUNT,
+) => {
   if (!Array.isArray(vector) || !vector.length) return [];
 
   if (vector.length <= sampleCount) {
@@ -172,10 +174,7 @@ const sampleEmbeddingValues = (vector, sampleCount = EMBEDDING_PREVIEW_SAMPLE_CO
   const step = (vector.length - 1) / (sampleCount - 1);
 
   return Array.from({ length: sampleCount }, (_, sampleIndex) => {
-    const index = Math.min(
-      vector.length - 1,
-      Math.round(sampleIndex * step),
-    );
+    const index = Math.min(vector.length - 1, Math.round(sampleIndex * step));
 
     return {
       index,
@@ -208,11 +207,13 @@ const buildEmbeddingPreview = (vector) => {
     normSquareSum += value * value;
   }
 
-  const sampleValues = sampleEmbeddingValues(vector).map(({ index, value }) => ({
-    index,
-    value,
-    label: formatEmbeddingNumber(value),
-  }));
+  const sampleValues = sampleEmbeddingValues(vector).map(
+    ({ index, value }) => ({
+      index,
+      value,
+      label: formatEmbeddingNumber(value),
+    }),
+  );
 
   return {
     dimensions: vector.length,
@@ -299,7 +300,7 @@ const workspaceSubtitle = computed(() => {
     return "Pick a collection from the left rail to inspect embeddings, clean up metadata, and export rows without leaving the workspace.";
   }
 
-  return `${formatNumber(currentCollectionData.value.length)} records loaded in ${currentCollection.value.name}, with vector previews available on demand.`;
+  return `${formatNumber(currentCollectionData.value.length)} records loaded in ${currentCollection.value.name}.`;
 });
 
 const activeCollectionMetadataLabel = computed(() => {
@@ -594,7 +595,10 @@ const moveEmbeddingDialogWindow = (direction) => {
     0,
     Math.min(
       nextOffset,
-      Math.max(0, activeEmbeddingVector.value.length - EMBEDDING_DIALOG_WINDOW_SIZE),
+      Math.max(
+        0,
+        activeEmbeddingVector.value.length - EMBEDDING_DIALOG_WINDOW_SIZE,
+      ),
     ),
   );
 };
@@ -603,7 +607,9 @@ const copyActiveEmbedding = async () => {
   if (!activeEmbeddingVector.value.length || !navigator?.clipboard) return;
 
   try {
-    await navigator.clipboard.writeText(JSON.stringify(activeEmbeddingVector.value));
+    await navigator.clipboard.writeText(
+      JSON.stringify(activeEmbeddingVector.value),
+    );
 
     toast.add({
       severity: "success",
@@ -634,7 +640,11 @@ const parseEmbeddingDraft = (draft, expectedDimensions = null) => {
     throw new Error("Embedding must be a JSON array of numbers.");
   }
 
-  if (!parsedValue.every((value) => typeof value === "number" && Number.isFinite(value))) {
+  if (
+    !parsedValue.every(
+      (value) => typeof value === "number" && Number.isFinite(value),
+    )
+  ) {
     throw new Error("Embedding must only contain finite numeric values.");
   }
 
@@ -709,10 +719,13 @@ const saveEmbedding = async (id) => {
   };
 
   try {
-    await axios.post(`${collectionBaseUrl.value}/${currentCollection.value.id}/update`, {
-      ids: [id],
-      embeddings: [parsedEmbedding],
-    });
+    await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+      {
+        ids: [id],
+        embeddings: [parsedEmbedding],
+      },
+    );
 
     embeddingVectorCache.value = {
       ...embeddingVectorCache.value,
@@ -1170,9 +1183,8 @@ const exportCSV = () => {
           Give your Chroma workspace a cleaner, sharper control room.
         </p>
         <p class="hero-copy__text">
-          Browse collections, inspect metadata, edit embeddings inline, and
-          export the view you need without feeling stuck in a bare-bones admin
-          screen.
+          Browse collections, inspect metadata, edit embeddings, and export the
+          view you need without feeling stuck in a bare-bones admin screen.
         </p>
 
         <div class="hero-highlight-grid">
@@ -1556,10 +1568,10 @@ const exportCSV = () => {
               <div class="table-toolbar">
                 <div class="table-toolbar__copy">
                   <p class="section-kicker">Embedding explorer</p>
-                  <h2>Documents, metadata, and vectors</h2>
+                  <h2>Documents, metadata and vectors</h2>
                   <p>
                     Search and edit the current records, then expand a row to
-                    inspect its vector without crowding the table.
+                    inspect its vector.
                   </p>
                 </div>
 
@@ -1758,22 +1770,27 @@ const exportCSV = () => {
                         dims
                       </span>
                       <span>
-                        norm {{ getEmbeddingPreview(slotProps.data.id).normLabel }}
+                        norm
+                        {{ getEmbeddingPreview(slotProps.data.id).normLabel }}
                       </span>
                     </div>
 
                     <div class="embedding-preview__range">
                       <span>
-                        min {{ getEmbeddingPreview(slotProps.data.id).minLabel }}
+                        min
+                        {{ getEmbeddingPreview(slotProps.data.id).minLabel }}
                       </span>
                       <span>
-                        max {{ getEmbeddingPreview(slotProps.data.id).maxLabel }}
+                        max
+                        {{ getEmbeddingPreview(slotProps.data.id).maxLabel }}
                       </span>
                     </div>
                   </div>
 
                   <svg
-                    v-if="getEmbeddingPreview(slotProps.data.id).sparklinePoints"
+                    v-if="
+                      getEmbeddingPreview(slotProps.data.id).sparklinePoints
+                    "
                     class="embedding-preview__sparkline embedding-preview__sparkline--wide"
                     viewBox="0 0 132 40"
                     preserveAspectRatio="none"
@@ -1818,7 +1835,10 @@ const exportCSV = () => {
                     rows="10"
                     :value="getEmbeddingDraft(slotProps.data.id)"
                     @input="
-                      updateEmbeddingDraft(slotProps.data.id, $event.target.value)
+                      updateEmbeddingDraft(
+                        slotProps.data.id,
+                        $event.target.value,
+                      )
                     "
                   ></textarea>
 
@@ -1896,7 +1916,9 @@ const exportCSV = () => {
         <div class="embedding-dialog__summary">
           <div class="embedding-summary-card">
             <span>Dimensions</span>
-            <strong>{{ formatNumber(activeEmbeddingPreview.dimensions) }}</strong>
+            <strong>{{
+              formatNumber(activeEmbeddingPreview.dimensions)
+            }}</strong>
           </div>
           <div class="embedding-summary-card">
             <span>Norm</span>
