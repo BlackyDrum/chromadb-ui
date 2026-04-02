@@ -627,6 +627,29 @@ const copyActiveEmbedding = async () => {
   }
 };
 
+const copyToClipboard = async (value, successDetail, errorDetail) => {
+  if (!value || !navigator?.clipboard) return;
+
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (_) {
+    toast.add({
+      severity: "error",
+      summary: "Clipboard error",
+      detail: errorDetail,
+      life: 4000,
+    });
+  }
+};
+
+const copyCollectionId = async () => {
+  await copyToClipboard(
+    currentCollection.value?.id,
+    "Collection ID copied to the clipboard.",
+    "Unable to copy the collection ID.",
+  );
+};
+
 const parseEmbeddingDraft = (draft, expectedDimensions = null) => {
   let parsedValue;
 
@@ -1530,8 +1553,21 @@ const exportCSV = () => {
               :key="fact.label"
               class="detail-row"
             >
-              <span>{{ fact.label }}</span>
-              <strong>{{ fact.value }}</strong>
+              <span class="my-auto">{{ fact.label }}</span>
+
+              <div class="detail-row__value">
+                <strong>{{ fact.value }}</strong>
+
+                <button
+                  v-if="fact.label === 'Collection ID' && currentCollection?.id"
+                  class="mini-button mini-button--ghost mini-button--icon"
+                  type="button"
+                  aria-label="Copy collection ID"
+                  @click="copyCollectionId"
+                >
+                  <i class="pi pi-copy"></i>
+                </button>
+              </div>
             </div>
           </div>
 

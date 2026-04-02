@@ -799,6 +799,13 @@ pre {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.detail-row__value {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
 .code-block {
   margin-top: 1.25rem;
   padding: 1rem;
@@ -1025,6 +1032,14 @@ pre {
 .mini-button--inline {
   min-height: 1.9rem;
   padding: 0.35rem 0.6rem;
+}
+
+.mini-button--icon {
+  width: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .embedding-row-panel {
