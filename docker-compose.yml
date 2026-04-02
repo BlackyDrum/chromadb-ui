@@ -1,6 +1,6 @@
 services:
   chromadb:
-    image: "chromadb/chroma:1.0.8"
+    image: "chromadb/chroma:1.5.0"
     ports:
       - "8080:8000"
     volumes:
