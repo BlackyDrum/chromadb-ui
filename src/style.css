@@ -8,7 +8,11 @@
   color-scheme: dark;
   --bg: #04131b;
   --bg-elevated: rgba(8, 25, 36, 0.86);
-  --panel: linear-gradient(180deg, rgba(10, 31, 44, 0.9), rgba(5, 20, 31, 0.84));
+  --panel: linear-gradient(
+    180deg,
+    rgba(10, 31, 44, 0.9),
+    rgba(5, 20, 31, 0.84)
+  );
   --panel-soft: rgba(9, 31, 44, 0.54);
   --stroke: rgba(148, 205, 221, 0.14);
   --stroke-strong: rgba(164, 225, 240, 0.24);
@@ -37,9 +41,16 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(255, 172, 92, 0.12), transparent 28rem),
-    radial-gradient(circle at right 20%, rgba(83, 229, 191, 0.09), transparent 26rem),
+  background: radial-gradient(
+      circle at top left,
+      rgba(255, 172, 92, 0.12),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at right 20%,
+      rgba(83, 229, 191, 0.09),
+      transparent 26rem
+    ),
     linear-gradient(180deg, #020a10 0%, #04131b 44%, #071c27 100%);
   color: var(--text-main);
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
@@ -127,7 +138,11 @@ pre {
   width: 20rem;
   height: 20rem;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(83, 229, 191, 0.32), transparent 68%);
+  background: radial-gradient(
+    circle,
+    rgba(83, 229, 191, 0.32),
+    transparent 68%
+  );
   animation: drift 18s ease-in-out infinite;
 }
 
@@ -137,17 +152,27 @@ pre {
   width: 23rem;
   height: 23rem;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(255, 190, 114, 0.24), transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 190, 114, 0.24),
+    transparent 70%
+  );
   animation: drift 22s ease-in-out infinite reverse;
 }
 
 .backdrop-grid {
   inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+  background-image: linear-gradient(
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px
+    ),
     linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
   background-size: 5rem 5rem;
-  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.74), transparent 88%);
+  mask-image: radial-gradient(
+    circle at center,
+    rgba(0, 0, 0, 0.74),
+    transparent 88%
+  );
   opacity: 0.22;
 }
 
@@ -428,7 +453,6 @@ pre {
 
 .workspace-sidebar {
   position: sticky;
-  top: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -472,7 +496,11 @@ pre {
   width: 3.25rem;
   height: 3.25rem;
   border-radius: 1rem;
-  background: linear-gradient(135deg, rgba(83, 229, 191, 0.22), rgba(255, 190, 114, 0.2));
+  background: linear-gradient(
+    135deg,
+    rgba(83, 229, 191, 0.22),
+    rgba(255, 190, 114, 0.2)
+  );
 }
 
 .brand-lockup__logo img {
@@ -613,7 +641,11 @@ pre {
 
 .collection-card--active {
   border-color: rgba(255, 190, 114, 0.28);
-  background: linear-gradient(135deg, rgba(255, 190, 114, 0.14), rgba(83, 229, 191, 0.08));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 190, 114, 0.14),
+    rgba(83, 229, 191, 0.08)
+  );
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
 }
 
@@ -637,7 +669,11 @@ pre {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(83, 229, 191, 0.25), rgba(255, 190, 114, 0.24));
+  background: linear-gradient(
+    135deg,
+    rgba(83, 229, 191, 0.25),
+    rgba(255, 190, 114, 0.24)
+  );
   color: var(--text-main);
   font-weight: 700;
 }
@@ -853,7 +889,11 @@ pre {
   width: 4rem;
   height: 4rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(83, 229, 191, 0.2), rgba(255, 190, 114, 0.2));
+  background: linear-gradient(
+    135deg,
+    rgba(83, 229, 191, 0.2),
+    rgba(255, 190, 114, 0.2)
+  );
   color: var(--text-main);
   font-size: 1.35rem;
 }
@@ -981,8 +1021,11 @@ pre {
   width: 100%;
   height: 2.15rem;
   border-radius: 0.8rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.02),
+      rgba(255, 255, 255, 0)
+    ),
     rgba(255, 255, 255, 0.03);
 }
 
@@ -1173,7 +1216,9 @@ pre {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.9rem;
-  transition: background-color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
 }
 
 .row-action--danger {
@@ -1361,7 +1406,11 @@ pre {
   width: min(44rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
   border-radius: 1.6rem;
-  background: linear-gradient(180deg, rgba(9, 29, 41, 0.96), rgba(4, 18, 28, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.96),
+    rgba(4, 18, 28, 0.98)
+  );
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -1401,7 +1450,11 @@ pre {
   width: min(68rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
   border-radius: 1.6rem;
-  background: linear-gradient(180deg, rgba(9, 29, 41, 0.96), rgba(4, 18, 28, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.96),
+    rgba(4, 18, 28, 0.98)
+  );
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -1502,7 +1555,11 @@ pre {
 .collection-menu-panel.p-overlaypanel {
   border: 1px solid var(--stroke);
   border-radius: 1.15rem;
-  background: linear-gradient(180deg, rgba(9, 29, 41, 0.98), rgba(4, 18, 28, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.98),
+    rgba(4, 18, 28, 0.98)
+  );
   box-shadow: var(--shadow);
 }
 
@@ -1514,7 +1571,11 @@ pre {
 .p-toast .p-toast-message {
   border-radius: 1rem;
   border: 1px solid var(--stroke);
-  background: linear-gradient(180deg, rgba(9, 29, 41, 0.96), rgba(4, 18, 28, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.96),
+    rgba(4, 18, 28, 0.98)
+  );
   color: var(--text-main);
   box-shadow: var(--shadow);
 }
@@ -1530,7 +1591,11 @@ pre {
 .p-confirmdialog {
   border: 1px solid var(--stroke);
   border-radius: 1.4rem;
-  background: linear-gradient(180deg, rgba(9, 29, 41, 0.98), rgba(4, 18, 28, 1));
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.98),
+    rgba(4, 18, 28, 1)
+  );
   box-shadow: var(--shadow);
 }
 
