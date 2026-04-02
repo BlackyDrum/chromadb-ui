@@ -1,39 +1,46 @@
-## ChromaDB UI
+# ChromaDB UI
 
-<p>
-  ChromaDB UI is a web application for interacting with the ChromaDB vector database using a user-friendly interface.
-</p>
+ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls.
 
-![ui1](https://github.com/user-attachments/assets/242fa52a-7c0c-4f94-9e79-c3630db577f1)
+## What You Can Do In The UI
 
-![ui7](https://github.com/user-attachments/assets/7ff34407-40e7-41f9-bec5-56fc1989c4ac)
+- Connect to a ChromaDB server with a URL, tenant, and database.
+- Browse all collections in the current workspace.
+- Create, rename, and delete collections.
+- Inspect collection metadata and workspace details from the dashboard.
+- Search records in the current collection.
+- Edit documents inline.
+- Edit metadata inline with JSON validation.
+- Expand a table row to preview that record's embedding.
+- Open a full vector viewer for large embeddings.
+- Edit embeddings directly and save them back to Chroma.
+- Export the current table view as CSV.
+- Reconnect faster with saved connection settings from the previous session.
 
-![ui8](https://github.com/user-attachments/assets/9f4884b9-ad2b-4c87-a2f4-8f16993adb9c)
-
----
-
-### Getting Started
+## Getting Started
 
 Follow these steps to run ChromaDB UI locally.
 
-1. Clone the repository
+1. Clone the repository.
 
 ```sh
 git clone https://github.com/BlackyDrum/chromadb-ui.git
 cd chromadb-ui
 ```
 
-2. Install dependencies
+2. Install dependencies.
 
 ```sh
 npm install
 ```
 
-3. Start the development server
+3. Start the development server.
 
 ```sh
 npm run dev
 ```
+
+The app runs on `http://localhost:8090` by default.
 
 ## Using Docker Compose for ChromaDB
 
@@ -52,13 +59,11 @@ This will start a ChromaDB instance and expose it on the appropriate port.
 
 If you encounter CORS errors while running the application, you'll need to ensure that the Chroma backend allows requests from the correct frontend origin.
 
-### Update the Chroma config file (`config.yaml`)
-
-Modify the `cors_allow_origins` field to match the port your frontend is running on:
+### Update `config.yaml`
 
 ```yml
 persist_path: "/data"
-cors_allow_origins: ["http://localhost:8090"] # Change to your actual frontend port
+cors_allow_origins: ["http://localhost:8090"]
 ```
 
 After making these changes, restart both the Docker container and the Vite development server. This should resolve the CORS issue.
