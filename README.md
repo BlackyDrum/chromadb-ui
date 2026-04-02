@@ -2,6 +2,19 @@
 
 ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls.
 
+## Showcase
+
+<p align="center">
+  <img src="./docs/showcase/01-preview.png" width="48%" />
+  <img src="./docs/showcase/02-preview.png" alt="Dashboard overview" width="48%" />
+</p>
+
+<p align="center">
+  <img src="./docs/showcase/03-preview.png" alt="Collections sidebar" width="31%" />
+  <img src="./docs/showcase/04-preview.png" alt="Embedding preview" width="31%" />
+  <img src="./docs/showcase/05-preview.png" alt="Vector editor" width="31%" />
+</p>
+
 ## What You Can Do In The UI
 
 - Connect to a ChromaDB server with a URL, tenant, and database.
