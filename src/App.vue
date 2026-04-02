@@ -38,6 +38,9 @@ const selectedCollection = ref(null);
 const embeddingPreviewCache = ref({});
 const embeddingVectorCache = ref({});
 const loadingEmbeddingPreviewIds = ref({});
+const savingEmbeddingIds = ref({});
+const embeddingEditorDrafts = ref({});
+const editingEmbeddingIds = ref({});
 const embeddingDialog = ref({ visible: false, id: null });
 const embeddingDialogOffset = ref(0);
 const expandedEmbeddingRows = ref({});
@@ -116,6 +119,9 @@ const resetEmbeddingViews = () => {
   embeddingPreviewCache.value = {};
   embeddingVectorCache.value = {};
   loadingEmbeddingPreviewIds.value = {};
+  savingEmbeddingIds.value = {};
+  embeddingEditorDrafts.value = {};
+  editingEmbeddingIds.value = {};
   embeddingDialog.value = { visible: false, id: null };
   embeddingDialogOffset.value = 0;
   expandedEmbeddingRows.value = {};
@@ -229,6 +235,25 @@ const getEmbeddingSummaryText = (id) => {
   if (!preview) return "Vector preview available on demand";
 
   return `${formatNumber(preview.dimensions)} dims • norm ${preview.normLabel}`;
+};
+
+const getEmbeddingDraft = (id) => {
+  return embeddingEditorDrafts.value[id] ?? "";
+};
+
+const updateEmbeddingDraft = (id, value) => {
+  embeddingEditorDrafts.value = {
+    ...embeddingEditorDrafts.value,
+    [id]: value,
+  };
+};
+
+const isEmbeddingEditing = (id) => {
+  return Boolean(editingEmbeddingIds.value[id]);
+};
+
+const isSavingEmbedding = (id) => {
+  return Boolean(savingEmbeddingIds.value[id]);
 };
 
 const getCollectionMetadataLabel = (collection) => {
@@ -593,6 +618,130 @@ const copyActiveEmbedding = async () => {
       detail: "Unable to copy the embedding vector.",
       life: 4000,
     });
+  }
+};
+
+const parseEmbeddingDraft = (draft, expectedDimensions = null) => {
+  let parsedValue;
+
+  try {
+    parsedValue = JSON.parse(draft);
+  } catch (_) {
+    throw new Error("Embedding must be valid JSON.");
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error("Embedding must be a JSON array of numbers.");
+  }
+
+  if (!parsedValue.every((value) => typeof value === "number" && Number.isFinite(value))) {
+    throw new Error("Embedding must only contain finite numeric values.");
+  }
+
+  if (
+    expectedDimensions !== null &&
+    expectedDimensions !== undefined &&
+    parsedValue.length !== expectedDimensions
+  ) {
+    throw new Error(
+      `Embedding dimension mismatch. Expected ${expectedDimensions} values but received ${parsedValue.length}.`,
+    );
+  }
+
+  return parsedValue;
+};
+
+const startEmbeddingEdit = async (id) => {
+  if (!id) return;
+
+  if (!embeddingVectorCache.value[id]) {
+    await loadEmbeddingPreview(id);
+  }
+
+  const currentVector = embeddingVectorCache.value[id];
+
+  if (!Array.isArray(currentVector) || !currentVector.length) return;
+
+  embeddingEditorDrafts.value = {
+    ...embeddingEditorDrafts.value,
+    [id]: JSON.stringify(currentVector, null, 2),
+  };
+  editingEmbeddingIds.value = {
+    ...editingEmbeddingIds.value,
+    [id]: true,
+  };
+};
+
+const cancelEmbeddingEdit = (id) => {
+  const nextEditingState = { ...editingEmbeddingIds.value };
+  delete nextEditingState[id];
+  editingEmbeddingIds.value = nextEditingState;
+
+  const nextDrafts = { ...embeddingEditorDrafts.value };
+  delete nextDrafts[id];
+  embeddingEditorDrafts.value = nextDrafts;
+};
+
+const saveEmbedding = async (id) => {
+  if (!currentCollection.value || isSavingEmbedding(id)) return;
+
+  const currentPreview = getEmbeddingPreview(id);
+  let parsedEmbedding;
+
+  try {
+    parsedEmbedding = parseEmbeddingDraft(
+      getEmbeddingDraft(id),
+      currentPreview?.dimensions ?? null,
+    );
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid embedding",
+      detail: error.message,
+      life: 5000,
+    });
+    return;
+  }
+
+  savingEmbeddingIds.value = {
+    ...savingEmbeddingIds.value,
+    [id]: true,
+  };
+
+  try {
+    await axios.post(`${collectionBaseUrl.value}/${currentCollection.value.id}/update`, {
+      ids: [id],
+      embeddings: [parsedEmbedding],
+    });
+
+    embeddingVectorCache.value = {
+      ...embeddingVectorCache.value,
+      [id]: parsedEmbedding,
+    };
+    embeddingPreviewCache.value = {
+      ...embeddingPreviewCache.value,
+      [id]: buildEmbeddingPreview(parsedEmbedding),
+    };
+
+    toast.add({
+      severity: "success",
+      summary: "Embedding updated",
+      detail: `Vector values for ${id} were saved.`,
+      life: 3500,
+    });
+
+    cancelEmbeddingEdit(id);
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Error",
+      detail: `Unable to update embedding. Reason: ${getErrorMessage(error)}`,
+      life: 5000,
+    });
+  } finally {
+    const nextSavingState = { ...savingEmbeddingIds.value };
+    delete nextSavingState[id];
+    savingEmbeddingIds.value = nextSavingState;
   }
 };
 
@@ -978,6 +1127,9 @@ const deleteEmbedding = async (id) => {
 
     delete embeddingPreviewCache.value[id];
     delete embeddingVectorCache.value[id];
+    delete embeddingEditorDrafts.value[id];
+    delete editingEmbeddingIds.value[id];
+    delete savingEmbeddingIds.value[id];
 
     if (embeddingDialog.value.id === id) {
       closeEmbeddingDialog();
@@ -1561,6 +1713,19 @@ const exportCSV = () => {
                     </button>
 
                     <button
+                      class="mini-button mini-button--ghost"
+                      type="button"
+                      :disabled="isEmbeddingPreviewLoading(slotProps.data.id)"
+                      @click="startEmbeddingEdit(slotProps.data.id)"
+                    >
+                      <span>{{
+                        isEmbeddingEditing(slotProps.data.id)
+                          ? "Editing"
+                          : "Edit vector"
+                      }}</span>
+                    </button>
+
+                    <button
                       class="mini-button"
                       type="button"
                       @click="openEmbeddingDialog(slotProps.data.id)"
@@ -1633,6 +1798,69 @@ const exportCSV = () => {
                     </div>
                   </div>
                 </div>
+
+                <div
+                  v-if="isEmbeddingEditing(slotProps.data.id)"
+                  class="embedding-editor"
+                >
+                  <div class="embedding-editor__header">
+                    <div>
+                      <p class="section-kicker">Edit embedding</p>
+                      <p class="embedding-editor__copy">
+                        Provide a JSON array of numbers. The vector must keep
+                        the same dimension count.
+                      </p>
+                    </div>
+                  </div>
+
+                  <textarea
+                    class="embedding-editor__textarea scroll-container"
+                    rows="10"
+                    :value="getEmbeddingDraft(slotProps.data.id)"
+                    @input="
+                      updateEmbeddingDraft(slotProps.data.id, $event.target.value)
+                    "
+                  ></textarea>
+
+                  <div class="embedding-editor__footer">
+                    <span class="embedding-editor__hint">
+                      {{
+                        getEmbeddingPreview(slotProps.data.id)
+                          ? `${formatNumber(
+                              getEmbeddingPreview(slotProps.data.id).dimensions,
+                            )} values expected`
+                          : "Load the vector first to validate dimensions"
+                      }}
+                    </span>
+
+                    <div class="embedding-editor__actions">
+                      <button
+                        class="mini-button mini-button--ghost"
+                        type="button"
+                        :disabled="isSavingEmbedding(slotProps.data.id)"
+                        @click="cancelEmbeddingEdit(slotProps.data.id)"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        class="mini-button"
+                        type="button"
+                        :disabled="isSavingEmbedding(slotProps.data.id)"
+                        @click="saveEmbedding(slotProps.data.id)"
+                      >
+                        <i
+                          :class="
+                            isSavingEmbedding(slotProps.data.id)
+                              ? 'pi pi-spin pi-spinner'
+                              : 'pi pi-check'
+                          "
+                        ></i>
+                        <span>Save vector</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </template>
           </DataTable>
@@ -1691,6 +1919,18 @@ const exportCSV = () => {
             <button
               class="mini-button mini-button--ghost"
               type="button"
+              @click="startEmbeddingEdit(embeddingDialog.id)"
+            >
+              <span>{{
+                isEmbeddingEditing(embeddingDialog.id)
+                  ? "Editing"
+                  : "Edit vector"
+              }}</span>
+            </button>
+
+            <button
+              class="mini-button mini-button--ghost"
+              type="button"
               :disabled="embeddingDialogOffset === 0"
               @click="moveEmbeddingDialogWindow(-1)"
             >
@@ -1708,6 +1948,67 @@ const exportCSV = () => {
             >
               Next
             </button>
+          </div>
+        </div>
+
+        <div
+          v-if="isEmbeddingEditing(embeddingDialog.id)"
+          class="embedding-editor embedding-editor--dialog"
+        >
+          <div class="embedding-editor__header">
+            <div>
+              <p class="section-kicker">Edit embedding</p>
+              <p class="embedding-editor__copy">
+                Edit the full vector as JSON. Saving updates the record in
+                Chroma immediately.
+              </p>
+            </div>
+          </div>
+
+          <textarea
+            class="embedding-editor__textarea scroll-container"
+            rows="12"
+            :value="getEmbeddingDraft(embeddingDialog.id)"
+            @input="
+              updateEmbeddingDraft(embeddingDialog.id, $event.target.value)
+            "
+          ></textarea>
+
+          <div class="embedding-editor__footer">
+            <span class="embedding-editor__hint">
+              {{
+                activeEmbeddingPreview
+                  ? `${formatNumber(activeEmbeddingPreview.dimensions)} values expected`
+                  : "Vector dimension unavailable"
+              }}
+            </span>
+
+            <div class="embedding-editor__actions">
+              <button
+                class="mini-button mini-button--ghost"
+                type="button"
+                :disabled="isSavingEmbedding(embeddingDialog.id)"
+                @click="cancelEmbeddingEdit(embeddingDialog.id)"
+              >
+                Cancel
+              </button>
+
+              <button
+                class="mini-button"
+                type="button"
+                :disabled="isSavingEmbedding(embeddingDialog.id)"
+                @click="saveEmbedding(embeddingDialog.id)"
+              >
+                <i
+                  :class="
+                    isSavingEmbedding(embeddingDialog.id)
+                      ? 'pi pi-spin pi-spinner'
+                      : 'pi pi-check'
+                  "
+                ></i>
+                <span>Save vector</span>
+              </button>
+            </div>
           </div>
         </div>
 
