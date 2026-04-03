@@ -3316,103 +3316,112 @@ const exportCSV = async (includeEmbeddings = false) => {
 
     <div class="query-panel query-panel--dialog">
       <div class="query-panel__form">
-        <div class="panel-heading">
-          <div>
-            <p class="query-panel__copy">
-              Run a full-text document search or paste an embedding vector to
-              retrieve nearest matches from the active collection.
-            </p>
+        <section class="query-panel__form-section">
+          <div class="panel-heading">
+            <div>
+              <p class="query-panel__copy">
+                Run a full-text document search or paste an embedding vector to
+                retrieve nearest matches from the active collection.
+              </p>
+            </div>
+
+            <div class="query-panel__header-actions">
+              <span class="tag-chip">
+                {{
+                  currentCollection
+                    ? currentCollection.name
+                    : "Select a collection"
+                }}
+              </span>
+            </div>
           </div>
 
-          <div class="query-panel__header-actions">
-            <span class="tag-chip">
+          <div class="query-mode-switch">
+            <button
+              class="query-mode-switch__button"
+              :class="{
+                'query-mode-switch__button--active': queryMode === 'text',
+              }"
+              type="button"
+              @click="queryMode = 'text'"
+            >
+              Text search
+            </button>
+
+            <button
+              class="query-mode-switch__button"
+              :class="{
+                'query-mode-switch__button--active': queryMode === 'embedding',
+              }"
+              type="button"
+              @click="queryMode = 'embedding'"
+            >
+              Embedding JSON
+            </button>
+          </div>
+
+          <label class="field">
+            <span class="field__label">
+              {{ queryMode === "text" ? "Search text" : "Query embedding" }}
+            </span>
+            <span class="field__hint">
               {{
-                currentCollection
-                  ? currentCollection.name
-                  : "Select a collection"
+                queryMode === "text"
+                  ? "This mode matches documents using Chroma's document contains filter."
+                  : "Paste a JSON array of numbers to query with a vector directly."
               }}
             </span>
-          </div>
-        </div>
 
-        <div class="query-mode-switch">
-          <button
-            class="query-mode-switch__button"
-            :class="{
-              'query-mode-switch__button--active': queryMode === 'text',
-            }"
-            type="button"
-            @click="queryMode = 'text'"
-          >
-            Text search
-          </button>
+            <textarea
+              v-if="queryMode === 'embedding'"
+              v-model="queryEmbedding"
+              rows="8"
+              placeholder="[0.12, -0.44, 0.87, 0.03]"
+            ></textarea>
 
-          <button
-            class="query-mode-switch__button"
-            :class="{
-              'query-mode-switch__button--active': queryMode === 'embedding',
-            }"
-            type="button"
-            @click="queryMode = 'embedding'"
-          >
-            Embedding JSON
-          </button>
-        </div>
-
-        <label class="field">
-          <span class="field__label">
-            {{ queryMode === "text" ? "Search text" : "Query embedding" }}
-          </span>
-          <span class="field__hint">
-            {{
-              queryMode === "text"
-                ? "This mode matches documents using Chroma's document contains filter."
-                : "Paste a JSON array of numbers to query with a vector directly."
-            }}
-          </span>
-
-          <textarea
-            v-if="queryMode === 'embedding'"
-            v-model="queryEmbedding"
-            rows="8"
-            placeholder="[0.12, -0.44, 0.87, 0.03]"
-          ></textarea>
-
-          <textarea
-            v-else
-            v-model="queryText"
-            rows="4"
-            placeholder="Find records about semantic search and vector databases"
-          ></textarea>
-        </label>
-
-        <div class="query-panel__controls">
-          <label class="field field--compact query-panel__count">
-            <span class="field__label">Result count</span>
-            <input v-model="queryResultCount" type="number" min="1" max="25" />
+            <textarea
+              v-else
+              v-model="queryText"
+              rows="4"
+              placeholder="Find records about semantic search and vector databases"
+            ></textarea>
           </label>
 
-          <button
-            class="ui-button ui-button--primary"
-            type="button"
-            :disabled="!currentCollection || isQueryingCollection"
-            @click="runCollectionQuery"
-          >
-            <i
-              :class="
-                isQueryingCollection ? 'pi pi-spin pi-spinner' : 'pi pi-search'
-              "
-            ></i>
-            <span>Run query</span>
-          </button>
-        </div>
+          <div class="query-panel__controls">
+            <label class="field field--compact query-panel__count">
+              <span class="field__label">Result count</span>
+              <input
+                v-model="queryResultCount"
+                type="number"
+                min="1"
+                max="25"
+              />
+            </label>
 
-        <p class="query-panel__hint">
-          Text mode performs document substring search. Use embedding JSON mode
-          for nearest-neighbor vector search.
-        </p>
+            <button
+              class="ui-button ui-button--primary"
+              type="button"
+              :disabled="!currentCollection || isQueryingCollection"
+              @click="runCollectionQuery"
+            >
+              <i
+                :class="
+                  isQueryingCollection
+                    ? 'pi pi-spin pi-spinner'
+                    : 'pi pi-search'
+                "
+              ></i>
+              <span>Run query</span>
+            </button>
+          </div>
 
-        <div class="query-history">
+          <p class="query-panel__hint">
+            Text mode performs document substring search. Use embedding JSON
+            mode for nearest-neighbor vector search.
+          </p>
+        </section>
+
+        <section class="query-history query-panel__history-section">
           <div class="query-history__header">
             <div>
               <p class="section-kicker">Recent queries</p>
@@ -3486,7 +3495,7 @@ const exportCSV = async (includeEmbeddings = false) => {
             Successful queries from this collection will appear here for quick
             reuse.
           </div>
-        </div>
+        </section>
       </div>
 
       <div class="query-panel__results">

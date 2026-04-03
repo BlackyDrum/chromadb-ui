@@ -1043,18 +1043,49 @@ pre {
   gap: 1.25rem;
   padding: 1.15rem;
   border-radius: 1.6rem;
+  align-items: stretch;
+  min-height: 0;
 }
 
 .query-panel--dialog {
   padding: 0;
   border-radius: 0;
+  gap: 1rem;
+  grid-template-columns: minmax(19rem, 21rem) minmax(0, 1fr);
+  align-items: start;
 }
 
-.query-panel__form,
+.query-panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.query-panel__form-section,
+.query-panel__history-section,
 .query-panel__results {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-height: 0;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.3rem;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.query-panel__history-section {
+  flex: 1 0 auto;
+}
+
+.query-panel__results {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.02)
+  );
+  align-self: stretch;
 }
 
 .query-panel__copy,
@@ -1069,7 +1100,6 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  padding-top: 0.1rem;
 }
 
 .query-history__header {
@@ -1086,9 +1116,7 @@ pre {
 .query-history__list {
   display: grid;
   gap: 0.75rem;
-  max-height: 16rem;
-  overflow-y: auto;
-  padding-right: 0.25rem;
+  padding-right: 0;
 }
 
 .query-history-card {
@@ -1130,6 +1158,9 @@ pre {
 }
 
 .query-history__empty {
+  display: flex;
+  align-items: center;
+  min-height: 8rem;
   padding: 1rem;
   border: 1px dashed rgba(255, 255, 255, 0.12);
   border-radius: 1rem;
@@ -1414,9 +1445,8 @@ pre {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.85rem;
-  max-height: 24rem;
-  overflow-y: auto;
-  padding-right: 0.2rem;
+  padding-right: 0;
+  align-content: start;
 }
 
 .query-result-card {
@@ -1459,7 +1489,8 @@ pre {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 12rem;
+  min-height: 18rem;
+  padding: 1.25rem;
   border: 1px dashed rgba(255, 255, 255, 0.12);
   border-radius: 1.2rem;
   text-align: center;
@@ -2278,7 +2309,7 @@ pre {
 }
 
 .p-dialog.query-dialog {
-  width: min(78rem, calc(100vw - 2rem));
+  width: min(72rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
   border-radius: 1.6rem;
   background: linear-gradient(
@@ -2303,6 +2334,8 @@ pre {
 
 .query-dialog .p-dialog-content {
   padding: 0.7rem 1.15rem 1.15rem;
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
 }
 
 .query-dialog .p-dialog-header-icon {
@@ -2495,6 +2528,18 @@ pre {
   .import-panel__layout,
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .query-dialog .p-dialog-content {
+    display: block;
+    height: auto;
+    min-height: 0;
+    max-height: calc(100vh - 7rem);
+    overflow: auto;
+  }
+
+  .query-panel--dialog {
+    height: auto;
   }
 }
 
