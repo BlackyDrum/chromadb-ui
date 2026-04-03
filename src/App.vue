@@ -69,6 +69,7 @@ const showImportViewer = ref(false);
 const showMetricsViewer = ref(false);
 const metadataFilterMode = ref("all");
 const metadataFilterRules = ref([]);
+const metadataFilterFocusedRuleId = ref(null);
 const queryMode = ref("text");
 const queryText = ref("");
 const queryEmbedding = ref("");
@@ -2174,6 +2175,40 @@ const addMetadataFilterRule = () => {
   ];
 };
 
+const getMetadataFilterSuggestions = (rule) => {
+  const normalizedKey = `${rule?.key ?? ""}`.trim().toLowerCase();
+
+  if (!normalizedKey) {
+    return metadataFilterKeyOptions.value.slice(0, 8);
+  }
+
+  return metadataFilterKeyOptions.value
+    .filter((key) => key.toLowerCase().includes(normalizedKey))
+    .slice(0, 8);
+};
+
+const shouldShowMetadataFilterSuggestions = (rule) => {
+  return (
+    metadataFilterFocusedRuleId.value === rule.id &&
+    getMetadataFilterSuggestions(rule).length > 0
+  );
+};
+
+const handleMetadataFilterKeyFocus = (ruleId) => {
+  metadataFilterFocusedRuleId.value = ruleId;
+};
+
+const handleMetadataFilterKeyBlur = () => {
+  window.setTimeout(() => {
+    metadataFilterFocusedRuleId.value = null;
+  }, 80);
+};
+
+const selectMetadataFilterKey = (rule, key) => {
+  rule.key = key;
+  metadataFilterFocusedRuleId.value = null;
+};
+
 const removeMetadataFilterRule = (ruleId) => {
   metadataFilterRules.value = metadataFilterRules.value.filter(
     (rule) => rule.id !== ruleId,
@@ -2183,6 +2218,7 @@ const removeMetadataFilterRule = (ruleId) => {
 const clearMetadataFilters = () => {
   metadataFilterRules.value = [];
   metadataFilterMode.value = "all";
+  metadataFilterFocusedRuleId.value = null;
 };
 
 const hideMetadataFilterOverlayPanel = () => {
@@ -4212,13 +4248,34 @@ const exportCSV = async (includeEmbeddings = false) => {
           class="metadata-filter-rule"
         >
           <div class="metadata-filter-rule__fields">
-            <label class="field field--compact">
+            <label class="field field--compact metadata-filter-key-field">
               <span class="field__label">Key</span>
-              <input
-                v-model="rule.key"
-                type="text"
-                list="metadata-filter-key-options"
-              />
+              <div class="metadata-filter-key-input-wrap">
+                <input
+                  v-model="rule.key"
+                  type="text"
+                  @focus="handleMetadataFilterKeyFocus(rule.id)"
+                  @blur="handleMetadataFilterKeyBlur"
+                />
+
+                <div
+                  v-if="shouldShowMetadataFilterSuggestions(rule)"
+                  class="metadata-filter-key-dropdown"
+                >
+                  <button
+                    v-for="suggestion in getMetadataFilterSuggestions(rule)"
+                    :key="suggestion"
+                    class="metadata-filter-key-option"
+                    type="button"
+                    @mousedown.prevent="
+                      selectMetadataFilterKey(rule, suggestion)
+                    "
+                  >
+                    <span>{{ suggestion }}</span>
+                    <small>Detected key</small>
+                  </button>
+                </div>
+              </div>
             </label>
 
             <label class="field field--compact">
@@ -4252,7 +4309,7 @@ const exportCSV = async (includeEmbeddings = false) => {
           </div>
 
           <button
-            class="mini-button mini-button--ghost mini-button--icon"
+            class="mini-button mini-button--ghost mini-button--icon metadata-filter-rule__remove"
             type="button"
             aria-label="Remove metadata filter"
             @click="removeMetadataFilterRule(rule.id)"
@@ -4266,14 +4323,6 @@ const exportCSV = async (includeEmbeddings = false) => {
         No filters added yet. Click <code>Add rule</code> to start refining the
         table
       </div>
-
-      <datalist id="metadata-filter-key-options">
-        <option
-          v-for="key in metadataFilterKeyOptions"
-          :key="key"
-          :value="key"
-        ></option>
-      </datalist>
     </div>
   </OverlayPanel>
 
