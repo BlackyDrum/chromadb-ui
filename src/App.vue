@@ -72,6 +72,7 @@ const queryEmbedding = ref("");
 const queryResultCount = ref(5);
 const queryResults = ref([]);
 const lastQuerySummary = ref("");
+const queryHistory = ref([]);
 const importMode = ref("upsert");
 const importPayload = ref("");
 const isLoadingMetricsEmbeddings = ref(false);
@@ -100,12 +101,14 @@ const entryHighlights = [
 
 onBeforeMount(() => {
   retrieveConnectionParameters();
+  retrieveQueryHistory();
 });
 
 const EMBEDDING_PREVIEW_SAMPLE_COUNT = 6;
 const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
+const QUERY_HISTORY_LIMIT = 10;
 const IMPORT_EXAMPLE_PAYLOAD = `[
   {
     "id": "support-001",
@@ -181,6 +184,29 @@ const countWords = (value) => {
   if (!normalizedValue) return 0;
 
   return normalizedValue.split(/\s+/).length;
+};
+
+const truncateText = (value, limit = 80) => {
+  const normalizedValue = `${value ?? ""}`.trim();
+
+  if (normalizedValue.length <= limit) return normalizedValue;
+
+  return `${normalizedValue.slice(0, Math.max(0, limit - 1))}…`;
+};
+
+const formatQueryHistoryTimestamp = (value) => {
+  if (!value) return "";
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch (_) {
+    return String(value);
+  }
 };
 
 const sampleRows = (rows, sampleSize) => {
@@ -548,6 +574,14 @@ const importActionLabel = computed(() => {
   return importMode.value === "upsert" ? "Run upsert" : "Add records";
 });
 
+const currentCollectionQueryHistory = computed(() => {
+  if (!currentCollection.value) return [];
+
+  return queryHistory.value.filter(
+    (entry) => entry.collectionId === currentCollection.value.id,
+  );
+});
+
 const filteredCollectionData = computed(() => {
   const globalFilterValue = `${filters.value?.global?.value ?? ""}`
     .trim()
@@ -678,6 +712,22 @@ const retrieveConnectionParameters = () => {
   url.value = stored_url;
   tenant.value = stored_tenant;
   database.value = stored_database;
+};
+
+const storeQueryHistory = (historyItems) => {
+  localStorage.setItem("query_history", JSON.stringify(historyItems));
+};
+
+const retrieveQueryHistory = () => {
+  const storedQueryHistory = localStorage.getItem("query_history");
+  if (!storedQueryHistory) return;
+
+  try {
+    const parsedHistory = JSON.parse(storedQueryHistory);
+    queryHistory.value = Array.isArray(parsedHistory) ? parsedHistory : [];
+  } catch (_) {
+    queryHistory.value = [];
+  }
 };
 
 const initializeTenantAndDatabase = async () => {
@@ -1006,6 +1056,38 @@ const parseQueryEmbedding = (value) => {
   }
 
   return vector;
+};
+
+const appendQueryHistoryEntry = (entry) => {
+  const nextHistory = [
+    entry,
+    ...queryHistory.value.filter((historyEntry) => historyEntry.id !== entry.id),
+  ].slice(0, QUERY_HISTORY_LIMIT);
+
+  queryHistory.value = nextHistory;
+  storeQueryHistory(nextHistory);
+};
+
+const clearCurrentCollectionQueryHistory = () => {
+  if (!currentCollection.value) return;
+
+  queryHistory.value = queryHistory.value.filter(
+    (entry) => entry.collectionId !== currentCollection.value.id,
+  );
+  storeQueryHistory(queryHistory.value);
+};
+
+const applyQueryHistoryEntry = (entry) => {
+  queryMode.value = entry.mode;
+  queryResultCount.value = entry.resultCount;
+  queryText.value = entry.mode === "text" ? entry.value : "";
+  queryEmbedding.value = entry.mode === "embedding" ? entry.value : "";
+  lastQuerySummary.value = entry.summary;
+};
+
+const rerunQueryHistoryEntry = async (entry) => {
+  applyQueryHistoryEntry(entry);
+  await runCollectionQuery();
 };
 
 const loadImportExample = () => {
@@ -1357,9 +1439,12 @@ const runCollectionQuery = async () => {
   if (!currentCollection.value || isQueryingCollection.value) return;
 
   const resultCount = Math.max(1, Number(queryResultCount.value) || 5);
+  let historyEntry = null;
 
   if (queryMode.value === "text") {
-    if (!queryText.value.trim()) {
+    const trimmedQueryText = queryText.value.trim();
+
+    if (!trimmedQueryText) {
       toast.add({
         severity: "error",
         summary: "Missing search text",
@@ -1369,7 +1454,18 @@ const runCollectionQuery = async () => {
       return;
     }
 
-    lastQuerySummary.value = `Text search: ${queryText.value.trim()}`;
+    lastQuerySummary.value = `Text search: ${trimmedQueryText}`;
+    historyEntry = {
+      id: `${currentCollection.value.id}:text:${trimmedQueryText.toLowerCase()}:${resultCount}`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      mode: "text",
+      value: trimmedQueryText,
+      preview: truncateText(trimmedQueryText, 72),
+      resultCount,
+      summary: lastQuerySummary.value,
+      timestamp: new Date().toISOString(),
+    };
   } else {
     let parsedEmbedding;
 
@@ -1386,6 +1482,23 @@ const runCollectionQuery = async () => {
     }
 
     lastQuerySummary.value = `Embedding query • ${formatNumber(parsedEmbedding.length)} dims`;
+    historyEntry = {
+      id: `${currentCollection.value.id}:embedding:${safeStringify(parsedEmbedding)}:${resultCount}`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      mode: "embedding",
+      value: JSON.stringify(parsedEmbedding),
+      preview: `${formatNumber(parsedEmbedding.length)} dims • ${truncateText(
+        parsedEmbedding
+          .slice(0, 4)
+          .map((value) => formatEmbeddingNumber(value))
+          .join(", "),
+        48,
+      )}`,
+      resultCount,
+      summary: lastQuerySummary.value,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   isQueryingCollection.value = true;
@@ -1437,6 +1550,10 @@ const runCollectionQuery = async () => {
         distance: distances[index],
         matchType: "embedding",
       }));
+    }
+
+    if (historyEntry) {
+      appendQueryHistoryEntry(historyEntry);
     }
   } catch (error) {
     queryResults.value = [];
@@ -3288,6 +3405,82 @@ const exportCSV = async (includeEmbeddings = false) => {
           Text mode performs document substring search. Use embedding JSON mode
           for nearest-neighbor vector search.
         </p>
+
+        <div class="query-history">
+          <div class="query-history__header">
+            <div>
+              <p class="section-kicker">Recent queries</p>
+              <h3>
+                {{
+                  currentCollectionQueryHistory.length
+                    ? `${currentCollectionQueryHistory.length} saved`
+                    : "No saved queries yet"
+                }}
+              </h3>
+            </div>
+
+            <button
+              v-if="currentCollectionQueryHistory.length"
+              class="mini-button mini-button--ghost"
+              type="button"
+              @click="clearCurrentCollectionQueryHistory"
+            >
+              Clear history
+            </button>
+          </div>
+
+          <div
+            v-if="currentCollectionQueryHistory.length"
+            class="query-history__list scroll-container"
+          >
+            <article
+              v-for="entry in currentCollectionQueryHistory"
+              :key="entry.id"
+              class="query-history-card"
+            >
+              <div class="query-history-card__top">
+                <span class="query-history-card__mode">
+                  {{ entry.mode === "text" ? "Text search" : "Embedding" }}
+                </span>
+                <span class="query-history-card__time">
+                  {{ formatQueryHistoryTimestamp(entry.timestamp) }}
+                </span>
+              </div>
+
+              <strong class="query-history-card__preview">
+                {{ entry.preview }}
+              </strong>
+
+              <p class="query-history-card__summary">
+                {{ entry.summary }} • {{ entry.resultCount }} requested
+              </p>
+
+              <div class="query-history-card__actions">
+                <button
+                  class="mini-button mini-button--ghost"
+                  type="button"
+                  @click="applyQueryHistoryEntry(entry)"
+                >
+                  Restore
+                </button>
+
+                <button
+                  class="mini-button"
+                  type="button"
+                  @click="rerunQueryHistoryEntry(entry)"
+                >
+                  <i class="pi pi-history"></i>
+                  <span>Run again</span>
+                </button>
+              </div>
+            </article>
+          </div>
+
+          <div v-else class="query-history__empty">
+            Successful queries from this collection will appear here for quick
+            reuse.
+          </div>
+        </div>
       </div>
 
       <div class="query-panel__results">

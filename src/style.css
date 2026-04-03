@@ -1065,6 +1065,78 @@ pre {
   line-height: 1.6;
 }
 
+.query-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-top: 0.1rem;
+}
+
+.query-history__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.query-history__header h3 {
+  font-size: 1.05rem;
+}
+
+.query-history__list {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.query-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.query-history-card__top,
+.query-history-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.query-history-card__mode {
+  color: var(--amber);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.query-history-card__time,
+.query-history-card__summary {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.query-history-card__preview {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.query-history__empty {
+  padding: 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
 .query-mode-switch {
   display: inline-flex;
   gap: 0.65rem;
@@ -2519,6 +2591,9 @@ pre {
 
   .query-mode-switch,
   .import-panel__toolbar,
+  .query-history__header,
+  .query-history-card__top,
+  .query-history-card__actions,
   .query-panel__controls,
   .query-panel__results-header,
   .query-panel__header-actions,
