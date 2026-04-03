@@ -76,22 +76,22 @@ const importPayload = ref("");
 
 const entryHighlights = [
   {
-    label: "Inline edits",
-    value: "Documents, metadata and embeddings",
+    label: "Query workflows",
+    value: "Text and vector search",
     description:
-      "Update embeddings directly inside the table and sync changes back to Chroma.",
+      "Run text or embedding queries and jump results back into the table.",
   },
   {
-    label: "Saved context",
-    value: "Remembers your last workspace",
+    label: "Paste-first imports",
+    value: "Import JSON records",
     description:
-      "Server, tenant, and database settings are restored locally for the next session.",
+      "Paste JSON or JSONL, then add or upsert records into the active collection.",
   },
   {
-    label: "Fast exports",
-    value: "CSV on demand",
+    label: "Inline control",
+    value: "Edit data in place",
     description:
-      "Pull your current table view into downstream analysis without leaving the app.",
+      "Update documents, metadata, and embeddings directly inside the dashboard.",
   },
 ];
 
