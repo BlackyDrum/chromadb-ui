@@ -2344,46 +2344,44 @@ const exportCSV = async (includeEmbeddings = false) => {
                 </span>
               </button>
 
-              <div class="workspace-header__side-actions">
-                <button
-                  class="workspace-import-cta"
-                  type="button"
-                  :disabled="!currentCollection"
-                  @click="showImportViewer = true"
-                >
-                  <span class="workspace-import-cta__icon">
-                    <i class="pi pi-upload"></i>
-                  </span>
+              <button
+                class="workspace-import-cta"
+                type="button"
+                :disabled="!currentCollection"
+                @click="showImportViewer = true"
+              >
+                <span class="workspace-import-cta__icon">
+                  <i class="pi pi-upload"></i>
+                </span>
 
-                  <span class="workspace-import-cta__copy">
-                    <small>Data import</small>
-                    <strong>Open Importer</strong>
-                    <span
-                      >Paste records as JSON and add or upsert them into this
-                      collection.</span
-                    >
-                  </span>
-                </button>
+                <span class="workspace-import-cta__copy">
+                  <small>Data import</small>
+                  <strong>Open Importer</strong>
+                  <span
+                    >Paste records as JSON and add or upsert them into this
+                    collection.</span
+                  >
+                </span>
+              </button>
 
-                <button
-                  class="workspace-metrics-cta"
-                  type="button"
-                  :disabled="!currentCollection"
-                  @click="openMetricsViewer"
-                >
-                  <span class="workspace-metrics-cta__icon">
-                    <i class="pi pi-chart-line"></i>
-                  </span>
+              <button
+                class="workspace-metrics-cta"
+                type="button"
+                :disabled="!currentCollection"
+                @click="openMetricsViewer"
+              >
+                <span class="workspace-metrics-cta__icon">
+                  <i class="pi pi-chart-line"></i>
+                </span>
 
-                  <span class="workspace-metrics-cta__copy">
-                    <small>Collection metrics</small>
-                    <strong>Open Metrics</strong>
-                    <span
-                      >Review detailed stats for the selected collection.</span
-                    >
-                  </span>
-                </button>
-              </div>
+                <span class="workspace-metrics-cta__copy">
+                  <small>Collection metrics</small>
+                  <strong>Open Metrics</strong>
+                  <span
+                    >Review detailed stats for the selected collection.</span
+                  >
+                </span>
+              </button>
             </div>
           </div>
         </div>

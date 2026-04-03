@@ -755,16 +755,10 @@ pre {
 
 .workspace-header__actions {
   display: grid;
-  grid-template-columns: minmax(28rem, 31rem) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
-  width: min(100%, 62rem);
+  width: 100%;
   align-items: stretch;
-}
-
-.workspace-header__side-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
 }
 
 .workspace-header__intro h1 {
@@ -788,9 +782,12 @@ pre {
 
 .workspace-query-cta {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
   width: 100%;
+  height: 100%;
   min-width: 0;
   max-width: none;
   padding: 1rem 1.1rem;
@@ -826,13 +823,12 @@ pre {
 .workspace-query-cta__icon {
   display: grid;
   place-items: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 1rem;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 0.95rem;
   background: linear-gradient(135deg, #ffd08c, #ff8d5b);
   color: #11171c;
-  font-size: 1.05rem;
-  flex-shrink: 0;
+  font-size: 1rem;
 }
 
 .workspace-query-cta__copy {
@@ -867,6 +863,7 @@ pre {
   justify-content: space-between;
   gap: 0.85rem;
   width: 100%;
+  height: 100%;
   min-width: 0;
   max-width: none;
   padding: 1rem 1.1rem;
@@ -944,6 +941,7 @@ pre {
   justify-content: space-between;
   gap: 0.85rem;
   width: 100%;
+  height: 100%;
   min-width: 0;
   max-width: none;
   padding: 1rem 1.1rem;
@@ -2506,10 +2504,6 @@ pre {
     width: 100%;
   }
 
-  .workspace-header__side-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .workspace-query-cta,
   .workspace-import-cta,
   .workspace-metrics-cta {
@@ -2553,10 +2547,6 @@ pre {
   .metrics-embedding-grid,
   .query-results-grid,
   .embedding-dialog__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-header__side-actions {
     grid-template-columns: 1fr;
   }
 
