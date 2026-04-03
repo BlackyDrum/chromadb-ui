@@ -47,6 +47,7 @@ const expandedEmbeddingRows = ref({});
 
 const collectionOverlayPanel = ref();
 const exportOverlayPanel = ref();
+const metadataFilterOverlayPanel = ref();
 const embeddingDataTable = ref();
 
 const connected = ref(false);
@@ -66,6 +67,8 @@ const collectionSearch = ref("");
 const showQueryViewer = ref(false);
 const showImportViewer = ref(false);
 const showMetricsViewer = ref(false);
+const metadataFilterMode = ref("all");
+const metadataFilterRules = ref([]);
 const queryMode = ref("text");
 const queryText = ref("");
 const queryEmbedding = ref("");
@@ -110,6 +113,12 @@ const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
+const METADATA_FILTER_OPERATORS = [
+  { label: "Equals", value: "equals" },
+  { label: "Contains", value: "contains" },
+  { label: "Exists", value: "exists" },
+  { label: "Missing", value: "missing" },
+];
 const IMPORT_EXAMPLE_PAYLOAD = `[
   {
     "id": "support-001",
@@ -130,6 +139,8 @@ const IMPORT_EXAMPLE_PAYLOAD = `[
     }
   }
 ]`;
+
+let metadataFilterRuleSequence = 0;
 
 const safeStringify = (value, pretty = false) => {
   if (value === null || value === undefined) return "null";
@@ -177,6 +188,106 @@ const parseMetadataValue = (value) => {
   } catch (_) {
     return null;
   }
+};
+
+const createMetadataFilterRule = (overrides = {}) => ({
+  id: `metadata-filter-${(metadataFilterRuleSequence += 1)}`,
+  key: "",
+  operator: "equals",
+  value: "",
+  ...overrides,
+});
+
+const doesMetadataFilterOperatorNeedValue = (operator) => {
+  return operator !== "exists" && operator !== "missing";
+};
+
+const normalizeMetadataFilterValue = (value) => {
+  if (value === null) return "null";
+  if (value === undefined) return "";
+  if (typeof value === "string") return value.trim().toLowerCase();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).toLowerCase();
+  }
+
+  return safeStringify(value).trim().toLowerCase();
+};
+
+const getRowMetadataObject = (row) => {
+  const metadata = parseMetadataValue(row?.metadata);
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  return metadata;
+};
+
+const isMetadataFilterRuleComplete = (rule) => {
+  const normalizedKey = `${rule?.key ?? ""}`.trim();
+
+  if (!normalizedKey) return false;
+
+  if (!doesMetadataFilterOperatorNeedValue(rule?.operator)) {
+    return true;
+  }
+
+  return `${rule?.value ?? ""}`.trim().length > 0;
+};
+
+const getMetadataFilterOperatorLabel = (operator) => {
+  return (
+    METADATA_FILTER_OPERATORS.find((entry) => entry.value === operator)
+      ?.label ?? operator
+  );
+};
+
+const formatMetadataFilterRule = (rule) => {
+  const normalizedKey = `${rule?.key ?? ""}`.trim();
+
+  if (!normalizedKey) return "Incomplete filter";
+
+  const operatorLabel = getMetadataFilterOperatorLabel(rule?.operator);
+
+  if (!doesMetadataFilterOperatorNeedValue(rule?.operator)) {
+    return `${normalizedKey} ${operatorLabel.toLowerCase()}`;
+  }
+
+  return `${normalizedKey} ${operatorLabel.toLowerCase()} ${`${rule?.value ?? ""}`.trim()}`;
+};
+
+const doesMetadataFilterRuleMatch = (row, rule) => {
+  const normalizedKey = `${rule?.key ?? ""}`.trim();
+
+  if (!normalizedKey) return true;
+
+  const metadataObject = getRowMetadataObject(row);
+  const hasKey = Boolean(
+    metadataObject &&
+      Object.prototype.hasOwnProperty.call(metadataObject, normalizedKey),
+  );
+
+  if (rule?.operator === "exists") {
+    return hasKey;
+  }
+
+  if (rule?.operator === "missing") {
+    return !hasKey;
+  }
+
+  if (!hasKey) {
+    return false;
+  }
+
+  const metadataValue = metadataObject[normalizedKey];
+  const normalizedMetadataValue = normalizeMetadataFilterValue(metadataValue);
+  const normalizedRuleValue = normalizeMetadataFilterValue(rule?.value);
+
+  if (rule?.operator === "contains") {
+    return normalizedMetadataValue.includes(normalizedRuleValue);
+  }
+
+  return normalizedMetadataValue === normalizedRuleValue;
 };
 
 const countWords = (value) => {
@@ -550,11 +661,11 @@ const dashboardMetrics = computed(() => {
       description: "All namespaces currently available in this workspace.",
     },
     {
-      label: "Embeddings",
-      value: formatNumber(currentCollectionData.value.length),
+      label: "Loaded rows",
+      value: formatNumber(collectionMetrics.value.totalRows),
       description: currentCollection.value
-        ? "Rows loaded from the selected collection."
-        : "Select a collection to load its documents and metadata.",
+        ? `Records currently loaded from ${currentCollection.value.name}.`
+        : "Select a collection to load its records.",
     },
     {
       label: "Version",
@@ -583,21 +694,73 @@ const currentCollectionQueryHistory = computed(() => {
   );
 });
 
+const metadataFilterKeyOptions = computed(() => {
+  const keySet = new Set();
+
+  for (const row of currentCollectionData.value) {
+    const metadataObject = getRowMetadataObject(row);
+
+    if (!metadataObject) continue;
+
+    for (const key of Object.keys(metadataObject)) {
+      keySet.add(key);
+    }
+  }
+
+  return Array.from(keySet).sort((leftKey, rightKey) =>
+    leftKey.localeCompare(rightKey),
+  );
+});
+
+const activeMetadataFilterRules = computed(() => {
+  return metadataFilterRules.value.filter(isMetadataFilterRuleComplete);
+});
+
+const hasMetadataFilters = computed(
+  () => activeMetadataFilterRules.value.length > 0,
+);
+
+const hasTableSearchFilter = computed(() => {
+  return `${filters.value?.global?.value ?? ""}`.trim().length > 0;
+});
+
+const hasActiveTableFilters = computed(() => {
+  return hasTableSearchFilter.value || hasMetadataFilters.value;
+});
+
 const filteredCollectionData = computed(() => {
   const globalFilterValue = `${filters.value?.global?.value ?? ""}`
     .trim()
     .toLowerCase();
+  const activeMetadataRules = activeMetadataFilterRules.value;
 
-  if (!globalFilterValue) {
+  if (!globalFilterValue && !activeMetadataRules.length) {
     return currentCollectionData.value;
   }
 
   return currentCollectionData.value.filter((row) => {
-    const searchableText = [row.id, row.document, row.metadata]
-      .map((value) => `${value ?? ""}`.toLowerCase())
-      .join(" ");
+    const matchesSearch =
+      !globalFilterValue ||
+      [row.id, row.document, row.metadata]
+        .map((value) => `${value ?? ""}`.toLowerCase())
+        .join(" ")
+        .includes(globalFilterValue);
 
-    return searchableText.includes(globalFilterValue);
+    if (!matchesSearch) {
+      return false;
+    }
+
+    if (!activeMetadataRules.length) {
+      return true;
+    }
+
+    const matchedRules = activeMetadataRules.filter((rule) =>
+      doesMetadataFilterRuleMatch(row, rule),
+    ).length;
+
+    return metadataFilterMode.value === "any"
+      ? matchedRules > 0
+      : matchedRules === activeMetadataRules.length;
   });
 });
 
@@ -770,6 +933,7 @@ const retrieveCollections = async () => {
 
     if (!refreshedCurrentCollection) {
       currentCollectionData.value = [];
+      resetTableFilters();
       resetEmbeddingViews();
     }
   } catch (error) {
@@ -1062,7 +1226,9 @@ const parseQueryEmbedding = (value) => {
 const appendQueryHistoryEntry = (entry) => {
   const nextHistory = [
     entry,
-    ...queryHistory.value.filter((historyEntry) => historyEntry.id !== entry.id),
+    ...queryHistory.value.filter(
+      (historyEntry) => historyEntry.id !== entry.id,
+    ),
   ].slice(0, QUERY_HISTORY_LIMIT);
 
   queryHistory.value = nextHistory;
@@ -1574,6 +1740,8 @@ const runCollectionQuery = async () => {
 };
 
 const focusQueryResult = (id) => {
+  clearMetadataFilters();
+  hideMetadataFilterOverlayPanel();
   filters.value.global.value = id;
   showQueryViewer.value = false;
 };
@@ -1635,7 +1803,7 @@ const handleDisconnect = () => {
   collections.value = [];
   currentCollection.value = null;
   currentCollectionData.value = [];
-  filters.value.global.value = null;
+  resetTableFilters();
   collectionSearch.value = "";
   mobileSidebarOpen.value = false;
   resetEmbeddingViews();
@@ -1670,6 +1838,7 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   currentCollectionData.value = [];
   mobileSidebarOpen.value = false;
   isFetchingCollectionData.value = true;
+  resetTableFilters();
   resetEmbeddingViews();
   queryResults.value = [];
   lastQuerySummary.value = "";
@@ -1801,6 +1970,7 @@ const handleCollectionDeletion = () => {
         if (selectedCollection.value.id === currentCollection.value?.id) {
           currentCollection.value = null;
           currentCollectionData.value = [];
+          resetTableFilters();
           resetEmbeddingViews();
           queryResults.value = [];
           lastQuerySummary.value = "";
@@ -1995,6 +2165,40 @@ const deleteEmbedding = async (id) => {
       life: 5000,
     });
   }
+};
+
+const addMetadataFilterRule = () => {
+  metadataFilterRules.value = [
+    ...metadataFilterRules.value,
+    createMetadataFilterRule(),
+  ];
+};
+
+const removeMetadataFilterRule = (ruleId) => {
+  metadataFilterRules.value = metadataFilterRules.value.filter(
+    (rule) => rule.id !== ruleId,
+  );
+};
+
+const clearMetadataFilters = () => {
+  metadataFilterRules.value = [];
+  metadataFilterMode.value = "all";
+};
+
+const hideMetadataFilterOverlayPanel = () => {
+  metadataFilterOverlayPanel.value?.hide?.();
+};
+
+const toggleMetadataFilterOverlayPanel = (event) => {
+  if (!currentCollection.value) return;
+
+  metadataFilterOverlayPanel.value?.toggle(event);
+};
+
+const resetTableFilters = () => {
+  filters.value.global.value = null;
+  clearMetadataFilters();
+  hideMetadataFilterOverlayPanel();
 };
 
 const toggleExportOverlayPanel = (event) => {
@@ -2605,7 +2809,7 @@ const exportCSV = async (includeEmbeddings = false) => {
             dataKey="id"
             v-model:filters="filters"
             v-model:expandedRows="expandedEmbeddingRows"
-            :value="currentCollectionData"
+            :value="filteredCollectionData"
             @cell-edit-complete="onEmbeddingCellEditComplete"
             @row-expand="handleEmbeddingRowExpand"
           >
@@ -2621,6 +2825,25 @@ const exportCSV = async (includeEmbeddings = false) => {
                 </div>
 
                 <div class="table-toolbar__actions">
+                  <button
+                    class="ui-button ui-button--ghost metadata-filter-button"
+                    :class="{
+                      'metadata-filter-button--active': hasMetadataFilters,
+                    }"
+                    type="button"
+                    :disabled="!currentCollection"
+                    @click="toggleMetadataFilterOverlayPanel($event)"
+                  >
+                    <i class="pi pi-sliders-h"></i>
+                    <span>Metadata filters</span>
+                    <span
+                      v-if="activeMetadataFilterRules.length"
+                      class="metadata-filter-button__count"
+                    >
+                      {{ activeMetadataFilterRules.length }}
+                    </span>
+                  </button>
+
                   <button
                     class="ui-button ui-button--secondary export-button"
                     type="button"
@@ -2652,6 +2875,43 @@ const exportCSV = async (includeEmbeddings = false) => {
                     />
                   </label>
                 </div>
+              </div>
+
+              <div
+                v-if="activeMetadataFilterRules.length"
+                class="table-filter-strip"
+              >
+                <div class="table-filter-strip__summary">
+                  <span class="section-kicker">Metadata filters</span>
+                  <strong>
+                    {{
+                      metadataFilterMode === "any"
+                        ? "Match any rule"
+                        : "Match all rules"
+                    }}
+                  </strong>
+                </div>
+
+                <div class="table-filter-chip-list">
+                  <button
+                    v-for="rule in activeMetadataFilterRules"
+                    :key="rule.id"
+                    class="table-filter-chip"
+                    type="button"
+                    @click="removeMetadataFilterRule(rule.id)"
+                  >
+                    <span>{{ formatMetadataFilterRule(rule) }}</span>
+                    <i class="pi pi-times"></i>
+                  </button>
+                </div>
+
+                <button
+                  class="mini-button mini-button--ghost"
+                  type="button"
+                  @click="clearMetadataFilters"
+                >
+                  Clear metadata filters
+                </button>
               </div>
             </template>
 
@@ -3886,6 +4146,139 @@ const exportCSV = async (includeEmbeddings = false) => {
   </Dialog>
 
   <OverlayPanel
+    ref="metadataFilterOverlayPanel"
+    class="collection-menu-panel metadata-filter-panel"
+  >
+    <div class="metadata-filter-menu">
+      <div class="metadata-filter-menu__header">
+        <p class="section-kicker">Metadata filters</p>
+        <h3>Refine the current table</h3>
+        <p>
+          Build rules for metadata keys. Results update instantly and exports
+          follow the same visible rows.
+        </p>
+      </div>
+
+      <div class="metadata-filter-mode-switch">
+        <button
+          class="metadata-filter-mode-switch__button"
+          :class="{
+            'metadata-filter-mode-switch__button--active':
+              metadataFilterMode === 'all',
+          }"
+          type="button"
+          @click="metadataFilterMode = 'all'"
+        >
+          Match all
+        </button>
+
+        <button
+          class="metadata-filter-mode-switch__button"
+          :class="{
+            'metadata-filter-mode-switch__button--active':
+              metadataFilterMode === 'any',
+          }"
+          type="button"
+          @click="metadataFilterMode = 'any'"
+        >
+          Match any
+        </button>
+      </div>
+
+      <div class="metadata-filter-menu__toolbar">
+        <button
+          class="mini-button"
+          type="button"
+          @click="addMetadataFilterRule"
+        >
+          <i class="pi pi-plus"></i>
+          <span>Add rule</span>
+        </button>
+
+        <button
+          class="mini-button mini-button--ghost"
+          type="button"
+          :disabled="!metadataFilterRules.length"
+          @click="clearMetadataFilters"
+        >
+          Clear all
+        </button>
+      </div>
+
+      <div v-if="metadataFilterRules.length" class="metadata-filter-rule-list">
+        <article
+          v-for="rule in metadataFilterRules"
+          :key="rule.id"
+          class="metadata-filter-rule"
+        >
+          <div class="metadata-filter-rule__fields">
+            <label class="field field--compact">
+              <span class="field__label">Key</span>
+              <input
+                v-model="rule.key"
+                type="text"
+                list="metadata-filter-key-options"
+                placeholder="topic"
+              />
+            </label>
+
+            <label class="field field--compact">
+              <span class="field__label">Operator</span>
+              <select v-model="rule.operator" class="metadata-filter-select">
+                <option
+                  v-for="operator in METADATA_FILTER_OPERATORS"
+                  :key="operator.value"
+                  :value="operator.value"
+                >
+                  {{ operator.label }}
+                </option>
+              </select>
+            </label>
+
+            <label
+              v-if="doesMetadataFilterOperatorNeedValue(rule.operator)"
+              class="field field--compact"
+            >
+              <span class="field__label">Value</span>
+              <input v-model="rule.value" type="text" placeholder="auth" />
+            </label>
+
+            <div v-else class="metadata-filter-rule__message">
+              {{
+                rule.operator === "exists"
+                  ? "Keeps rows where this metadata key is present."
+                  : "Keeps rows where this metadata key is absent."
+              }}
+            </div>
+          </div>
+
+          <button
+            class="mini-button mini-button--ghost mini-button--icon"
+            type="button"
+            aria-label="Remove metadata filter"
+            @click="removeMetadataFilterRule(rule.id)"
+          >
+            <i class="pi pi-times"></i>
+          </button>
+        </article>
+      </div>
+
+      <div v-else class="metadata-filter-menu__empty">
+        No filters added yet. Click <code>Add rule</code> to start refining the
+        table
+      </div>
+
+      <datalist id="metadata-filter-key-options">
+        <option
+          v-for="key in metadataFilterKeyOptions"
+          :key="key"
+          :value="key"
+        ></option>
+      </datalist>
+    </div>
+  </OverlayPanel>
+
+  <OverlayPanel
     ref="exportOverlayPanel"
     class="collection-menu-panel export-menu-panel"
   >
@@ -3897,7 +4290,7 @@ const exportCSV = async (includeEmbeddings = false) => {
           Export {{ formatNumber(filteredCollectionData.length) }} visible
           {{ filteredCollectionData.length === 1 ? "row" : "rows" }}
           {{
-            filters.global.value
+            hasActiveTableFilters
               ? "from the filtered table view."
               : "from the current table view."
           }}
