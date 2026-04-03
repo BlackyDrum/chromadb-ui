@@ -1089,6 +1089,11 @@ pre {
   gap: 0.8rem;
 }
 
+.export-button__caret {
+  font-size: 0.8rem;
+  opacity: 0.72;
+}
+
 .search-shell--table {
   min-width: min(22rem, 100%);
 }
@@ -1468,6 +1473,78 @@ pre {
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.35rem;
+}
+
+.export-menu {
+  display: flex;
+  min-width: min(24rem, 78vw);
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.45rem;
+}
+
+.export-menu__header {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem 0.55rem 0.2rem;
+}
+
+.export-menu__header p:last-child {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.export-action {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  text-align: left;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.export-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 190, 114, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.export-action__icon {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 190, 114, 0.18),
+    rgba(83, 229, 191, 0.16)
+  );
+  color: var(--amber);
+  font-size: 1rem;
+}
+
+.export-action__copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.export-action__copy strong {
+  font-size: 0.95rem;
+}
+
+.export-action__copy span {
+  color: var(--text-soft);
+  line-height: 1.5;
 }
 
 .menu-action {

@@ -46,6 +46,7 @@ const embeddingDialogOffset = ref(0);
 const expandedEmbeddingRows = ref({});
 
 const collectionOverlayPanel = ref();
+const exportOverlayPanel = ref();
 const embeddingDataTable = ref();
 
 const connected = ref(false);
@@ -55,6 +56,7 @@ const isCreatingCollection = ref(false);
 const isDeletingCollection = ref(false);
 const isEditingCollection = ref(false);
 const isQueryingCollection = ref(false);
+const isExportingCsv = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
@@ -355,6 +357,24 @@ const dashboardMetrics = computed(() => {
 });
 
 const hasQueryResults = computed(() => queryResults.value.length > 0);
+
+const filteredCollectionData = computed(() => {
+  const globalFilterValue = `${filters.value?.global?.value ?? ""}`
+    .trim()
+    .toLowerCase();
+
+  if (!globalFilterValue) {
+    return currentCollectionData.value;
+  }
+
+  return currentCollectionData.value.filter((row) => {
+    const searchableText = [row.id, row.document, row.metadata]
+      .map((value) => `${value ?? ""}`.toLowerCase())
+      .join(" ");
+
+    return searchableText.includes(globalFilterValue);
+  });
+});
 
 const activeEmbeddingVector = computed(() => {
   if (!embeddingDialog.value.id) return [];
@@ -1342,8 +1362,142 @@ const deleteEmbedding = async (id) => {
   }
 };
 
-const exportCSV = () => {
+const toggleExportOverlayPanel = (event) => {
+  if (!filteredCollectionData.value.length || isExportingCsv.value) return;
+
+  exportOverlayPanel.value?.toggle(event);
+};
+
+const hideExportOverlayPanel = () => {
+  exportOverlayPanel.value?.hide?.();
+};
+
+const escapeCsvValue = (value) => {
+  const normalizedValue =
+    value === null || value === undefined ? "" : String(value);
+
+  return `"${normalizedValue.replace(/"/g, '""')}"`;
+};
+
+const buildExportFilename = (includeEmbeddings) => {
+  const sanitizedCollectionName =
+    (currentCollection.value?.name ?? "collection")
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "collection";
+  const dateStamp = new Date().toISOString().slice(0, 10);
+
+  return includeEmbeddings
+    ? `${sanitizedCollectionName}-with-embeddings-${dateStamp}.csv`
+    : `${sanitizedCollectionName}-${dateStamp}.csv`;
+};
+
+const downloadCsvFile = (filename, csvContent) => {
+  const csvBlob = new Blob(["\uFEFF", csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const downloadUrl = URL.createObjectURL(csvBlob);
+  const downloadLink = document.createElement("a");
+
+  downloadLink.href = downloadUrl;
+  downloadLink.download = filename;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+  URL.revokeObjectURL(downloadUrl);
+};
+
+const fetchEmbeddingsForExport = async (ids) => {
+  if (!ids.length) return {};
+
+  const response = await axios.post(
+    `${collectionBaseUrl.value}/${currentCollection.value.id}/get`,
+    {
+      ids,
+      include: ["embeddings"],
+    },
+  );
+
+  const responseIds = Array.isArray(response.data?.ids)
+    ? response.data.ids
+    : ids;
+  const embeddings = Array.isArray(response.data?.embeddings)
+    ? response.data.embeddings
+    : [];
+
+  return responseIds.reduce((embeddingMap, id, index) => {
+    embeddingMap[id] = Array.isArray(embeddings[index])
+      ? embeddings[index]
+      : null;
+    return embeddingMap;
+  }, {});
+};
+
+const getRowsForExport = () => {
+  const processedRows = embeddingDataTable.value?.processedData;
+
+  if (Array.isArray(processedRows) && processedRows.length) {
+    return processedRows;
+  }
+
+  return filteredCollectionData.value;
+};
+
+const exportTableCsv = () => {
+  if (!getRowsForExport().length) return;
+
+  hideExportOverlayPanel();
   embeddingDataTable.value?.exportCSV();
+};
+
+const exportCSV = async (includeEmbeddings = false) => {
+  if (
+    !currentCollection.value ||
+    !getRowsForExport().length ||
+    isExportingCsv.value
+  ) {
+    return;
+  }
+
+  if (!includeEmbeddings) {
+    exportTableCsv();
+    return;
+  }
+
+  hideExportOverlayPanel();
+  isExportingCsv.value = true;
+
+  try {
+    const rowsToExport = getRowsForExport().map((row) => ({ ...row }));
+    const embeddingsById = await fetchEmbeddingsForExport(
+      rowsToExport.map((row) => row.id),
+    );
+    const csvLines = [
+      ["id", "document", "metadata", "embedding"].map(escapeCsvValue).join(","),
+      ...rowsToExport.map((row) =>
+        [
+          row.id,
+          row.document,
+          row.metadata,
+          safeStringify(embeddingsById[row.id]),
+        ]
+          .map(escapeCsvValue)
+          .join(","),
+      ),
+    ];
+
+    downloadCsvFile(buildExportFilename(true), csvLines.join("\n"));
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Export failed",
+      detail: `Unable to export CSV with embeddings. Reason: ${getErrorMessage(error)}`,
+      life: 5000,
+    });
+  } finally {
+    isExportingCsv.value = false;
+  }
 };
 </script>
 
@@ -1792,13 +1946,25 @@ const exportCSV = () => {
 
                 <div class="table-toolbar__actions">
                   <button
-                    class="ui-button ui-button--secondary"
+                    class="ui-button ui-button--secondary export-button"
                     type="button"
-                    :disabled="!currentCollectionData.length"
-                    @click="exportCSV"
+                    :disabled="!filteredCollectionData.length || isExportingCsv"
+                    @click="toggleExportOverlayPanel($event)"
                   >
-                    <i class="pi pi-download"></i>
-                    <span>Export CSV</span>
+                    <i
+                      :class="
+                        isExportingCsv
+                          ? 'pi pi-spin pi-spinner'
+                          : 'pi pi-download'
+                      "
+                    ></i>
+                    <span>{{
+                      isExportingCsv ? "Preparing CSV" : "Export CSV"
+                    }}</span>
+                    <i
+                      v-if="!isExportingCsv"
+                      class="pi pi-angle-down export-button__caret"
+                    ></i>
                   </button>
 
                   <label class="search-shell search-shell--table">
@@ -2598,6 +2764,52 @@ const exportCSV = () => {
       </div>
     </template>
   </Dialog>
+
+  <OverlayPanel
+    ref="exportOverlayPanel"
+    class="collection-menu-panel export-menu-panel"
+  >
+    <div class="export-menu">
+      <div class="export-menu__header">
+        <p class="section-kicker">Export options</p>
+        <h3>Choose your CSV</h3>
+        <p>
+          Export {{ formatNumber(filteredCollectionData.length) }} visible
+          {{ filteredCollectionData.length === 1 ? "row" : "rows" }}
+          {{
+            filters.global.value
+              ? "from the filtered table view."
+              : "from the current table view."
+          }}
+        </p>
+      </div>
+
+      <button class="export-action" type="button" @click="exportCSV(false)">
+        <span class="export-action__icon">
+          <i class="pi pi-file-export"></i>
+        </span>
+
+        <span class="export-action__copy">
+          <strong>Quick export</strong>
+          <span>ID, document, and metadata only.</span>
+        </span>
+      </button>
+
+      <button class="export-action" type="button" @click="exportCSV(true)">
+        <span class="export-action__icon">
+          <i class="pi pi-database"></i>
+        </span>
+
+        <span class="export-action__copy">
+          <strong>Include embeddings</strong>
+          <span
+            >Fetches vector JSON for every exported row. Larger file, slower
+            export.</span
+          >
+        </span>
+      </button>
+    </div>
+  </OverlayPanel>
 
   <OverlayPanel ref="collectionOverlayPanel" class="collection-menu-panel">
     <div class="collection-menu">
