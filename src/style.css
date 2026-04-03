@@ -1116,7 +1116,9 @@ pre {
 .query-history__list {
   display: grid;
   gap: 0.75rem;
-  padding-right: 0;
+  max-height: min(18rem, calc(100vh - 24rem));
+  overflow-y: auto;
+  padding-right: 0.25rem;
 }
 
 .query-history-card {
