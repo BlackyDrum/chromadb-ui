@@ -4218,7 +4218,6 @@ const exportCSV = async (includeEmbeddings = false) => {
                 v-model="rule.key"
                 type="text"
                 list="metadata-filter-key-options"
-                placeholder="topic"
               />
             </label>
 
@@ -4240,7 +4239,7 @@ const exportCSV = async (includeEmbeddings = false) => {
               class="field field--compact"
             >
               <span class="field__label">Value</span>
-              <input v-model="rule.value" type="text" placeholder="auth" />
+              <input v-model="rule.value" type="text" />
             </label>
 
             <div v-else class="metadata-filter-rule__message">
