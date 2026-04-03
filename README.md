@@ -20,11 +20,9 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
 - Connect to a ChromaDB server with a URL, tenant, and database.
 - Browse all collections in the current workspace.
 - Create, rename, and delete collections.
-- Inspect collection metadata and workspace details from the dashboard.
-- Open a query popup for the selected collection.
+- Inspect and edit collection metadata and workspace details from the dashboard.
 - Run text-based document search inside a collection.
 - Run embedding-based nearest-neighbor search with raw vector JSON.
-- Jump query results back into the main table with `Find in table`.
 - Search records in the current collection.
 - Edit documents inline.
 - Edit metadata inline with JSON validation.
@@ -32,7 +30,6 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
 - Open a full vector viewer for large embeddings.
 - Edit embeddings directly and save them back to Chroma.
 - Export the current table view as CSV.
-- Reconnect faster with saved connection settings from the previous session.
 
 ## Getting Started
 
@@ -42,7 +39,6 @@ Follow these steps to run ChromaDB UI locally.
 
 ```sh
 git clone https://github.com/BlackyDrum/chromadb-ui.git
-cd chromadb-ui
 ```
 
 2. Install dependencies.
