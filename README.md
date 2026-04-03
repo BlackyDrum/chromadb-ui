@@ -21,6 +21,10 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
 - Browse all collections in the current workspace.
 - Create, rename, and delete collections.
 - Inspect collection metadata and workspace details from the dashboard.
+- Open a query popup for the selected collection.
+- Run text-based document search inside a collection.
+- Run embedding-based nearest-neighbor search with raw vector JSON.
+- Jump query results back into the main table with `Find in table`.
 - Search records in the current collection.
 - Edit documents inline.
 - Edit metadata inline with JSON validation.

@@ -54,11 +54,19 @@ const isFetchingCollectionData = ref(false);
 const isCreatingCollection = ref(false);
 const isDeletingCollection = ref(false);
 const isEditingCollection = ref(false);
+const isQueryingCollection = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
 const mobileSidebarOpen = ref(false);
 const collectionSearch = ref("");
+const showQueryViewer = ref(false);
+const queryMode = ref("text");
+const queryText = ref("");
+const queryEmbedding = ref("");
+const queryResultCount = ref(5);
+const queryResults = ref([]);
+const lastQuerySummary = ref("");
 
 const entryHighlights = [
   {
@@ -345,6 +353,8 @@ const dashboardMetrics = computed(() => {
     },
   ];
 });
+
+const hasQueryResults = computed(() => queryResults.value.length > 0);
 
 const activeEmbeddingVector = computed(() => {
   if (!embeddingDialog.value.id) return [];
@@ -650,6 +660,46 @@ const copyCollectionId = async () => {
   );
 };
 
+const formatQueryDistance = (distance) => {
+  if (distance === null || distance === undefined) return "n/a";
+  if (!Number.isFinite(distance)) return String(distance);
+  return distance.toFixed(4);
+};
+
+const getQueryResultLabel = (result) => {
+  if (result.matchType === "embedding") {
+    return `Distance ${formatQueryDistance(result.distance)}`;
+  }
+
+  return "Text match";
+};
+
+const parseQueryEmbedding = (value) => {
+  let parsedValue;
+
+  try {
+    parsedValue = JSON.parse(value);
+  } catch (_) {
+    throw new Error("Query embedding must be valid JSON.");
+  }
+
+  const vector = Array.isArray(parsedValue?.[0]) ? parsedValue[0] : parsedValue;
+
+  if (!Array.isArray(vector)) {
+    throw new Error("Query embedding must be a JSON array of numbers.");
+  }
+
+  if (
+    !vector.every(
+      (entry) => typeof entry === "number" && Number.isFinite(entry),
+    )
+  ) {
+    throw new Error("Query embedding must only contain finite numeric values.");
+  }
+
+  return vector;
+};
+
 const parseEmbeddingDraft = (draft, expectedDimensions = null) => {
   let parsedValue;
 
@@ -781,6 +831,110 @@ const saveEmbedding = async (id) => {
   }
 };
 
+const runCollectionQuery = async () => {
+  if (!currentCollection.value || isQueryingCollection.value) return;
+
+  const resultCount = Math.max(1, Number(queryResultCount.value) || 5);
+
+  if (queryMode.value === "text") {
+    if (!queryText.value.trim()) {
+      toast.add({
+        severity: "error",
+        summary: "Missing search text",
+        detail: "Enter text before running a search.",
+        life: 4000,
+      });
+      return;
+    }
+
+    lastQuerySummary.value = `Text search: ${queryText.value.trim()}`;
+  } else {
+    let parsedEmbedding;
+
+    try {
+      parsedEmbedding = parseQueryEmbedding(queryEmbedding.value);
+    } catch (error) {
+      toast.add({
+        severity: "error",
+        summary: "Invalid query embedding",
+        detail: error.message,
+        life: 5000,
+      });
+      return;
+    }
+
+    lastQuerySummary.value = `Embedding query • ${formatNumber(parsedEmbedding.length)} dims`;
+  }
+
+  isQueryingCollection.value = true;
+
+  try {
+    if (queryMode.value === "text") {
+      const response = await axios.post(
+        `${collectionBaseUrl.value}/${currentCollection.value.id}/get`,
+        {
+          where_document: {
+            $contains: queryText.value.trim(),
+          },
+          limit: resultCount,
+          include: ["documents", "metadatas"],
+        },
+      );
+
+      const ids = response.data?.ids ?? [];
+      const documents = response.data?.documents ?? [];
+      const metadatas = response.data?.metadatas ?? [];
+
+      queryResults.value = ids.map((id, index) => ({
+        id,
+        document: documents[index] ?? "",
+        metadata: safeStringify(metadatas[index], true),
+        distance: null,
+        matchType: "text",
+      }));
+    } else {
+      const parsedEmbedding = parseQueryEmbedding(queryEmbedding.value);
+      const response = await axios.post(
+        `${collectionBaseUrl.value}/${currentCollection.value.id}/query`,
+        {
+          query_embeddings: [parsedEmbedding],
+          n_results: resultCount,
+          include: ["documents", "metadatas", "distances"],
+        },
+      );
+
+      const ids = response.data?.ids?.[0] ?? [];
+      const documents = response.data?.documents?.[0] ?? [];
+      const metadatas = response.data?.metadatas?.[0] ?? [];
+      const distances = response.data?.distances?.[0] ?? [];
+
+      queryResults.value = ids.map((id, index) => ({
+        id,
+        document: documents[index] ?? "",
+        metadata: safeStringify(metadatas[index], true),
+        distance: distances[index],
+        matchType: "embedding",
+      }));
+    }
+  } catch (error) {
+    queryResults.value = [];
+
+    toast.add({
+      severity: "error",
+      summary: "Query failed",
+      detail: getErrorMessage(error),
+      life: 5000,
+    });
+  } finally {
+    isQueryingCollection.value = false;
+  }
+};
+
+const focusQueryResult = (id) => {
+  filters.value.global.value = id;
+  showQueryViewer.value = false;
+};
+
 const handleConnectionInitialization = async () => {
   if (!url.value || !tenant.value || !database.value) {
     toast.add({
@@ -842,6 +996,9 @@ const handleDisconnect = () => {
   collectionSearch.value = "";
   mobileSidebarOpen.value = false;
   resetEmbeddingViews();
+  queryResults.value = [];
+  lastQuerySummary.value = "";
+  showQueryViewer.value = false;
 };
 
 const update = async () => {
@@ -867,6 +1024,8 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   mobileSidebarOpen.value = false;
   isFetchingCollectionData.value = true;
   resetEmbeddingViews();
+  queryResults.value = [];
+  lastQuerySummary.value = "";
 
   try {
     const response = await axios.post(
@@ -991,6 +1150,9 @@ const handleCollectionDeletion = () => {
           currentCollection.value = null;
           currentCollectionData.value = [];
           resetEmbeddingViews();
+          queryResults.value = [];
+          lastQuerySummary.value = "";
+          showQueryViewer.value = false;
         }
 
         const collectionIndex = collections.value.findIndex(
@@ -1493,10 +1655,27 @@ const exportCSV = () => {
             <i class="pi pi-bars"></i>
           </button>
 
-          <div>
+          <div class="workspace-header__copy">
             <p class="section-kicker">Vector workspace</p>
             <h1>{{ workspaceTitle }}</h1>
             <p>{{ workspaceSubtitle }}</p>
+
+            <button
+              class="workspace-query-cta"
+              type="button"
+              :disabled="!currentCollection"
+              @click="showQueryViewer = true"
+            >
+              <span class="workspace-query-cta__icon">
+                <i class="pi pi-search"></i>
+              </span>
+
+              <span class="workspace-query-cta__copy">
+                <small>Semantic search</small>
+                <strong>Open Query Viewer</strong>
+                <span> Search this collection by text or embedding </span>
+              </span>
+            </button>
           </div>
         </div>
 
@@ -1924,6 +2103,182 @@ const exportCSV = () => {
       </section>
     </main>
   </div>
+
+  <Dialog
+    v-model:visible="showQueryViewer"
+    modal
+    :draggable="false"
+    class="query-dialog"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Collection query</p>
+        <h2>Search this collection</h2>
+      </div>
+    </template>
+
+    <div class="query-panel query-panel--dialog">
+      <div class="query-panel__form">
+        <div class="panel-heading">
+          <div>
+            <p class="query-panel__copy">
+              Run a full-text document search or paste an embedding vector to
+              retrieve nearest matches from the active collection.
+            </p>
+          </div>
+
+          <div class="query-panel__header-actions">
+            <span class="tag-chip">
+              {{
+                currentCollection
+                  ? currentCollection.name
+                  : "Select a collection"
+              }}
+            </span>
+          </div>
+        </div>
+
+        <div class="query-mode-switch">
+          <button
+            class="query-mode-switch__button"
+            :class="{
+              'query-mode-switch__button--active': queryMode === 'text',
+            }"
+            type="button"
+            @click="queryMode = 'text'"
+          >
+            Text search
+          </button>
+
+          <button
+            class="query-mode-switch__button"
+            :class="{
+              'query-mode-switch__button--active': queryMode === 'embedding',
+            }"
+            type="button"
+            @click="queryMode = 'embedding'"
+          >
+            Embedding JSON
+          </button>
+        </div>
+
+        <label class="field">
+          <span class="field__label">
+            {{ queryMode === "text" ? "Search text" : "Query embedding" }}
+          </span>
+          <span class="field__hint">
+            {{
+              queryMode === "text"
+                ? "This mode matches documents using Chroma's document contains filter."
+                : "Paste a JSON array of numbers to query with a vector directly."
+            }}
+          </span>
+
+          <textarea
+            v-if="queryMode === 'embedding'"
+            v-model="queryEmbedding"
+            rows="8"
+            placeholder="[0.12, -0.44, 0.87, 0.03]"
+          ></textarea>
+
+          <textarea
+            v-else
+            v-model="queryText"
+            rows="4"
+            placeholder="Find records about semantic search and vector databases"
+          ></textarea>
+        </label>
+
+        <div class="query-panel__controls">
+          <label class="field field--compact query-panel__count">
+            <span class="field__label">Result count</span>
+            <input v-model="queryResultCount" type="number" min="1" max="25" />
+          </label>
+
+          <button
+            class="ui-button ui-button--primary"
+            type="button"
+            :disabled="!currentCollection || isQueryingCollection"
+            @click="runCollectionQuery"
+          >
+            <i
+              :class="
+                isQueryingCollection ? 'pi pi-spin pi-spinner' : 'pi pi-search'
+              "
+            ></i>
+            <span>Run query</span>
+          </button>
+        </div>
+
+        <p class="query-panel__hint">
+          Text mode performs document substring search. Use embedding JSON mode
+          for nearest-neighbor vector search.
+        </p>
+      </div>
+
+      <div class="query-panel__results">
+        <div class="query-panel__results-header">
+          <div>
+            <p class="section-kicker">Results</p>
+            <h2>
+              {{
+                hasQueryResults
+                  ? `${queryResults.length} matches`
+                  : "No query results yet"
+              }}
+            </h2>
+          </div>
+
+          <span v-if="lastQuerySummary" class="query-panel__summary">
+            {{ lastQuerySummary }}
+          </span>
+        </div>
+
+        <div v-if="hasQueryResults" class="query-results-grid scroll-container">
+          <article
+            v-for="result in queryResults"
+            :key="result.id"
+            class="query-result-card"
+          >
+            <div class="query-result-card__top">
+              <strong>{{ result.id }}</strong>
+              <span>{{ getQueryResultLabel(result) }}</span>
+            </div>
+
+            <p class="query-result-card__document">
+              {{ result.document || "No document returned." }}
+            </p>
+
+            <code class="query-result-card__metadata">{{
+              result.metadata
+            }}</code>
+
+            <div class="query-result-card__actions">
+              <button
+                class="mini-button mini-button--ghost"
+                type="button"
+                @click="focusQueryResult(result.id)"
+              >
+                Find in table
+              </button>
+
+              <button
+                class="mini-button mini-button--ghost"
+                type="button"
+                @click="openEmbeddingDialog(result.id)"
+              >
+                Vector
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <div v-else class="query-panel__empty">
+          Run a query to see the nearest matches from the selected collection.
+        </div>
+      </div>
+    </div>
+  </Dialog>
 
   <Dialog
     v-model:visible="embeddingDialog.visible"
