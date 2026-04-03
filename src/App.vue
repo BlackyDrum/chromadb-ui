@@ -57,18 +57,22 @@ const isDeletingCollection = ref(false);
 const isEditingCollection = ref(false);
 const isQueryingCollection = ref(false);
 const isExportingCsv = ref(false);
+const isImportingRecords = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
 const mobileSidebarOpen = ref(false);
 const collectionSearch = ref("");
 const showQueryViewer = ref(false);
+const showImportViewer = ref(false);
 const queryMode = ref("text");
 const queryText = ref("");
 const queryEmbedding = ref("");
 const queryResultCount = ref(5);
 const queryResults = ref([]);
 const lastQuerySummary = ref("");
+const importMode = ref("upsert");
+const importPayload = ref("");
 
 const entryHighlights = [
   {
@@ -98,6 +102,26 @@ onBeforeMount(() => {
 const EMBEDDING_PREVIEW_SAMPLE_COUNT = 6;
 const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
+const IMPORT_EXAMPLE_PAYLOAD = `[
+  {
+    "id": "support-001",
+    "document": "How to reset a password in the admin portal.",
+    "embedding": [0.12, -0.44, 0.87, 0.03],
+    "metadata": {
+      "topic": "auth",
+      "lang": "en"
+    }
+  },
+  {
+    "id": "support-002",
+    "document": "Refund requests must be reviewed by billing.",
+    "embedding": [0.31, 0.08, -0.22, 0.91],
+    "metadata": {
+      "topic": "billing",
+      "priority": 2
+    }
+  }
+]`;
 
 const safeStringify = (value, pretty = false) => {
   if (value === null || value === undefined) return "null";
@@ -110,6 +134,15 @@ const safeStringify = (value, pretty = false) => {
 };
 
 const formatNumber = (value) => new Intl.NumberFormat().format(value ?? 0);
+
+const resetImportState = () => {
+  showImportViewer.value = false;
+  importMode.value = "upsert";
+  importPayload.value = "";
+};
+
+const hasRecordField = (record, field) =>
+  Object.prototype.hasOwnProperty.call(record, field);
 
 const formatEmbeddingNumber = (value) => {
   if (!Number.isFinite(value)) return String(value);
@@ -357,6 +390,10 @@ const dashboardMetrics = computed(() => {
 });
 
 const hasQueryResults = computed(() => queryResults.value.length > 0);
+
+const importActionLabel = computed(() => {
+  return importMode.value === "upsert" ? "Run upsert" : "Add records";
+});
 
 const filteredCollectionData = computed(() => {
   const globalFilterValue = `${filters.value?.global?.value ?? ""}`
@@ -720,6 +757,220 @@ const parseQueryEmbedding = (value) => {
   return vector;
 };
 
+const loadImportExample = () => {
+  importPayload.value = IMPORT_EXAMPLE_PAYLOAD;
+};
+
+const parseImportRecords = (value) => {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    throw new Error(
+      "Paste a JSON array, a single object, or JSON Lines before importing.",
+    );
+  }
+
+  let parsedValue;
+
+  if (trimmedValue.startsWith("[")) {
+    parsedValue = JSON.parse(trimmedValue);
+  } else if (trimmedValue.startsWith("{")) {
+    const parsedObject = JSON.parse(trimmedValue);
+    parsedValue = Array.isArray(parsedObject?.records)
+      ? parsedObject.records
+      : [parsedObject];
+  } else {
+    parsedValue = trimmedValue
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  }
+
+  if (!Array.isArray(parsedValue) || !parsedValue.length) {
+    throw new Error("The import payload must resolve to at least one record.");
+  }
+
+  const seenIds = new Set();
+
+  return parsedValue.map((record, index) => {
+    const rowNumber = index + 1;
+
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      throw new Error(`Record ${rowNumber} must be a JSON object.`);
+    }
+
+    const id =
+      typeof record.id === "string"
+        ? record.id.trim()
+        : `${record.id ?? ""}`.trim();
+
+    if (!id) {
+      throw new Error(`Record ${rowNumber} is missing a valid id.`);
+    }
+
+    if (seenIds.has(id)) {
+      throw new Error(`Duplicate id '${id}' found in the import payload.`);
+    }
+
+    seenIds.add(id);
+
+    const normalizedRecord = { id };
+
+    if (hasRecordField(record, "document")) {
+      if (
+        record.document !== null &&
+        record.document !== undefined &&
+        typeof record.document !== "string"
+      ) {
+        throw new Error(
+          `Record ${rowNumber} has a document that is not a string.`,
+        );
+      }
+
+      if (typeof record.document === "string") {
+        normalizedRecord.document = record.document;
+      }
+    }
+
+    if (hasRecordField(record, "embedding")) {
+      if (record.embedding !== null && record.embedding !== undefined) {
+        if (
+          !Array.isArray(record.embedding) ||
+          !record.embedding.every(
+            (entry) => typeof entry === "number" && Number.isFinite(entry),
+          )
+        ) {
+          throw new Error(
+            `Record ${rowNumber} has an embedding that is not a JSON array of finite numbers.`,
+          );
+        }
+
+        normalizedRecord.embedding = record.embedding;
+      }
+    }
+
+    if (hasRecordField(record, "metadata")) {
+      if (
+        record.metadata !== null &&
+        (typeof record.metadata !== "object" || Array.isArray(record.metadata))
+      ) {
+        throw new Error(
+          `Record ${rowNumber} metadata must be an object or null.`,
+        );
+      }
+
+      normalizedRecord.metadata = record.metadata;
+    }
+
+    if (!hasRecordField(normalizedRecord, "embedding")) {
+      throw new Error(
+        `Record ${rowNumber} is missing an embedding. This importer currently requires explicit embeddings for every record.`,
+      );
+    }
+
+    return normalizedRecord;
+  });
+};
+
+const buildImportPayloadGroups = (records) => {
+  const payloadGroups = new Map();
+
+  for (const record of records) {
+    const key = [
+      hasRecordField(record, "document") ? "d" : "",
+      hasRecordField(record, "embedding") ? "e" : "",
+      hasRecordField(record, "metadata") ? "m" : "",
+    ].join("");
+
+    if (!payloadGroups.has(key)) {
+      payloadGroups.set(key, {
+        ids: [],
+        embeddings: hasRecordField(record, "embedding") ? [] : null,
+        documents: hasRecordField(record, "document") ? [] : null,
+        metadatas: hasRecordField(record, "metadata") ? [] : null,
+        uris: null,
+      });
+    }
+
+    const payloadGroup = payloadGroups.get(key);
+    payloadGroup.ids.push(record.id);
+
+    if (hasRecordField(record, "document")) {
+      payloadGroup.documents.push(record.document);
+    }
+
+    if (hasRecordField(record, "embedding")) {
+      payloadGroup.embeddings.push(record.embedding);
+    }
+
+    if (hasRecordField(record, "metadata")) {
+      payloadGroup.metadatas.push(record.metadata);
+    }
+  }
+
+  return Array.from(payloadGroups.values());
+};
+
+const handleImportRecords = async () => {
+  if (!currentCollection.value || isImportingRecords.value) return;
+
+  let parsedRecords;
+
+  try {
+    parsedRecords = parseImportRecords(importPayload.value);
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid import payload",
+      detail: error.message,
+      life: 5000,
+    });
+    return;
+  }
+
+  const payloadGroups = buildImportPayloadGroups(parsedRecords);
+  const activeCollectionId = currentCollection.value.id;
+  const endpoint = importMode.value === "add" ? "add" : "upsert";
+  const recordsWithEmbeddings = parsedRecords.filter((record) =>
+    hasRecordField(record, "embedding"),
+  ).length;
+
+  isImportingRecords.value = true;
+
+  try {
+    for (const payloadGroup of payloadGroups) {
+      await axios.post(
+        `${collectionBaseUrl.value}/${activeCollectionId}/${endpoint}`,
+        payloadGroup,
+      );
+    }
+
+    toast.add({
+      severity: "success",
+      summary: "Import complete",
+      detail: `${importMode.value === "add" ? "Added" : "Upserted"} ${formatNumber(parsedRecords.length)} records${recordsWithEmbeddings ? `, including ${formatNumber(recordsWithEmbeddings)} explicit embeddings` : ""}.`,
+      life: 5000,
+    });
+
+    resetImportState();
+    await retrieveCollections();
+
+    if (currentCollection.value) {
+      await handleCollectionSelection(currentCollection.value, true);
+    }
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Import failed",
+      detail: `Unable to import records. Reason: ${getErrorMessage(error)}`,
+      life: 6000,
+    });
+  } finally {
+    isImportingRecords.value = false;
+  }
+};
+
 const parseEmbeddingDraft = (draft, expectedDimensions = null) => {
   let parsedValue;
 
@@ -1019,6 +1270,7 @@ const handleDisconnect = () => {
   queryResults.value = [];
   lastQuerySummary.value = "";
   showQueryViewer.value = false;
+  resetImportState();
 };
 
 const update = async () => {
@@ -1046,6 +1298,8 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   resetEmbeddingViews();
   queryResults.value = [];
   lastQuerySummary.value = "";
+  showQueryViewer.value = false;
+  resetImportState();
 
   try {
     const response = await axios.post(
@@ -1173,6 +1427,7 @@ const handleCollectionDeletion = () => {
           queryResults.value = [];
           lastQuerySummary.value = "";
           showQueryViewer.value = false;
+          resetImportState();
         }
 
         const collectionIndex = collections.value.findIndex(
@@ -1814,22 +2069,44 @@ const exportCSV = async (includeEmbeddings = false) => {
             <h1>{{ workspaceTitle }}</h1>
             <p>{{ workspaceSubtitle }}</p>
 
-            <button
-              class="workspace-query-cta"
-              type="button"
-              :disabled="!currentCollection"
-              @click="showQueryViewer = true"
-            >
-              <span class="workspace-query-cta__icon">
-                <i class="pi pi-search"></i>
-              </span>
+            <div class="workspace-header__actions">
+              <button
+                class="workspace-query-cta"
+                type="button"
+                :disabled="!currentCollection"
+                @click="showQueryViewer = true"
+              >
+                <span class="workspace-query-cta__icon">
+                  <i class="pi pi-search"></i>
+                </span>
 
-              <span class="workspace-query-cta__copy">
-                <small>Semantic search</small>
-                <strong>Open Query Viewer</strong>
-                <span> Search this collection by text or embedding </span>
-              </span>
-            </button>
+                <span class="workspace-query-cta__copy">
+                  <small>Semantic search</small>
+                  <strong>Open Query Viewer</strong>
+                  <span> Search this collection by text or embedding </span>
+                </span>
+              </button>
+
+              <button
+                class="workspace-import-cta"
+                type="button"
+                :disabled="!currentCollection"
+                @click="showImportViewer = true"
+              >
+                <span class="workspace-import-cta__icon">
+                  <i class="pi pi-upload"></i>
+                </span>
+
+                <span class="workspace-import-cta__copy">
+                  <small>Data import</small>
+                  <strong>Open Importer</strong>
+                  <span
+                    >Paste records as JSON and add or upsert them into this
+                    collection.</span
+                  >
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2269,6 +2546,162 @@ const exportCSV = async (includeEmbeddings = false) => {
       </section>
     </main>
   </div>
+
+  <Dialog
+    v-model:visible="showImportViewer"
+    modal
+    :draggable="false"
+    class="import-dialog"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Collection import</p>
+        <h2>Bring records into this collection</h2>
+      </div>
+    </template>
+
+    <div class="import-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="import-panel__copy">
+            Paste a JSON array, a single JSON object, or JSON Lines. Each record
+            needs an <b>id</b> and an <b>embedding</b>. <b>document</b> and
+            <b>metadata</b> are optional.
+          </p>
+        </div>
+
+        <div class="query-panel__header-actions">
+          <span class="tag-chip">
+            {{
+              currentCollection ? currentCollection.name : "Select a collection"
+            }}
+          </span>
+        </div>
+      </div>
+
+      <div class="query-mode-switch">
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active': importMode === 'upsert',
+          }"
+          type="button"
+          @click="importMode = 'upsert'"
+        >
+          Upsert
+        </button>
+
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active': importMode === 'add',
+          }"
+          type="button"
+          @click="importMode = 'add'"
+        >
+          Add only
+        </button>
+      </div>
+
+      <div class="import-panel__layout">
+        <div class="import-panel__form">
+          <div class="import-panel__toolbar">
+            <p class="import-panel__hint">
+              Embeddings are required here and must match the active
+              collection's dimension size.
+            </p>
+
+            <button
+              class="mini-button mini-button--ghost"
+              type="button"
+              @click="loadImportExample"
+            >
+              <i class="pi pi-file-edit"></i>
+              <span>Load example</span>
+            </button>
+          </div>
+
+          <label class="field">
+            <span class="field__label">Import payload</span>
+            <span class="field__hint">
+              Supported fields: <code>id</code>, <code>embedding</code>,
+              optional <code>document</code>, optional <code>metadata</code>.
+            </span>
+            <textarea
+              v-model="importPayload"
+              class="import-panel__textarea scroll-container"
+              rows="18"
+              placeholder='[
+  {
+    "id": "support-001",
+    "embedding": [0.12, -0.44, 0.87, 0.03],
+    "document": "How to reset a password in the admin portal.",
+    "metadata": { "topic": "auth" }
+  }
+]'
+            ></textarea>
+          </label>
+        </div>
+
+        <aside class="import-panel__guide">
+          <article class="import-guide-card">
+            <p class="section-kicker">Supported fields</p>
+            <div class="import-guide-list">
+              <div class="import-guide-row">
+                <strong>id</strong>
+                <span>Required unique string for every record.</span>
+              </div>
+              <div class="import-guide-row">
+                <strong>embedding</strong>
+                <span
+                  >Required JSON array of finite numbers. Its dimension must
+                  match the collection.</span
+                >
+              </div>
+              <div class="import-guide-row">
+                <strong>document</strong>
+                <span
+                  >Optional text stored with the record alongside the
+                  embedding.</span
+                >
+              </div>
+              <div class="import-guide-row">
+                <strong>metadata</strong>
+                <span>Optional JSON object stored with the record.</span>
+              </div>
+            </div>
+          </article>
+        </aside>
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          :disabled="isImportingRecords"
+          @click="showImportViewer = false"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="ui-button ui-button--primary"
+          type="button"
+          :disabled="!currentCollection || isImportingRecords"
+          @click="handleImportRecords"
+        >
+          <i
+            :class="
+              isImportingRecords ? 'pi pi-spin pi-spinner' : 'pi pi-upload'
+            "
+          ></i>
+          <span>{{ importActionLabel }}</span>
+        </button>
+      </div>
+    </template>
+  </Dialog>
 
   <Dialog
     v-model:visible="showQueryViewer"

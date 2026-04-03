@@ -739,13 +739,26 @@ pre {
 
 .workspace-header__intro {
   align-items: flex-start;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .workspace-header__copy {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.9rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.workspace-header__actions {
+  display: grid;
+  grid-template-columns: minmax(29rem, 32rem) minmax(17.5rem, 19rem);
+  gap: 1rem;
+  width: min(100%, 52rem);
+  align-items: stretch;
 }
 
 .workspace-header__intro h1 {
@@ -771,13 +784,17 @@ pre {
   display: flex;
   align-items: center;
   gap: 1rem;
-  min-width: min(28rem, 100%);
-  max-width: 34rem;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   padding: 1rem 1.1rem;
   border: 1px solid rgba(255, 190, 114, 0.24);
   border-radius: 1.2rem;
-  background:
-    linear-gradient(135deg, rgba(255, 208, 140, 0.16), rgba(255, 141, 91, 0.1)),
+  background: linear-gradient(
+      135deg,
+      rgba(255, 208, 140, 0.16),
+      rgba(255, 141, 91, 0.1)
+    ),
     rgba(255, 255, 255, 0.03);
   box-shadow: 0 18px 38px rgba(255, 121, 90, 0.12);
   text-align: left;
@@ -834,6 +851,83 @@ pre {
 }
 
 .workspace-query-cta__copy span {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.workspace-import-cta {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(83, 229, 191, 0.18);
+  border-radius: 1.2rem;
+  background: linear-gradient(
+      180deg,
+      rgba(83, 229, 191, 0.1),
+      rgba(83, 229, 191, 0.03)
+    ),
+    rgba(255, 255, 255, 0.02);
+  text-align: left;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+  cursor: pointer;
+}
+
+.workspace-import-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(83, 229, 191, 0.34);
+  box-shadow: 0 18px 36px rgba(46, 194, 165, 0.12);
+}
+
+.workspace-import-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.workspace-import-cta__icon {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 0.95rem;
+  background: linear-gradient(
+    135deg,
+    rgba(83, 229, 191, 0.22),
+    rgba(148, 205, 221, 0.12)
+  );
+  color: var(--teal);
+  font-size: 1rem;
+}
+
+.workspace-import-cta__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+}
+
+.workspace-import-cta__copy small {
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.workspace-import-cta__copy strong {
+  font-family: "Space Grotesk", "Aptos Display", sans-serif;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.workspace-import-cta__copy span {
   color: var(--text-soft);
   line-height: 1.55;
 }
@@ -909,11 +1003,17 @@ pre {
   border-radius: 0.8rem;
   color: var(--text-soft);
   font-weight: 600;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
 }
 
 .query-mode-switch__button--active {
-  background: linear-gradient(135deg, rgba(255, 208, 140, 0.18), rgba(255, 141, 91, 0.15));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 208, 140, 0.18),
+    rgba(255, 141, 91, 0.15)
+  );
   color: var(--text-main);
 }
 
@@ -939,6 +1039,77 @@ pre {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.2rem 0 0;
+}
+
+.import-panel__copy,
+.import-panel__hint {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.import-panel__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  gap: 1rem;
+}
+
+.import-panel__form,
+.import-panel__guide {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.import-panel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.import-panel__textarea {
+  min-height: 24rem;
+  resize: vertical;
+}
+
+.import-guide-card {
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.import-guide-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.import-guide-row {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.import-guide-row strong {
+  color: var(--text-main);
+  font-size: 0.94rem;
+}
+
+.import-guide-row span {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.import-guide-note {
+  margin-top: 0.8rem;
+  color: var(--text-soft);
+  line-height: 1.55;
 }
 
 .query-panel__summary {
@@ -1741,6 +1912,47 @@ pre {
   color: var(--text-soft);
 }
 
+.p-dialog.import-dialog {
+  width: min(72rem, calc(100vw - 2rem));
+  border: 1px solid var(--stroke);
+  border-radius: 1.6rem;
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.96),
+    rgba(4, 18, 28, 0.98)
+  );
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.import-dialog .p-dialog-header,
+.import-dialog .p-dialog-content,
+.import-dialog .p-dialog-footer {
+  border: 0;
+  background: transparent;
+}
+
+.import-dialog .p-dialog-header {
+  padding: 1.15rem 1.15rem 0.4rem;
+}
+
+.import-dialog .p-dialog-content {
+  padding: 0.7rem 1.15rem 1rem;
+}
+
+.import-dialog .p-dialog-footer {
+  padding: 0 1.15rem 1.15rem;
+  margin-top: 1rem;
+}
+
+.import-dialog .p-dialog-header-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-soft);
+}
+
 .p-dialog.query-dialog {
   width: min(78rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
@@ -1953,6 +2165,7 @@ pre {
 @media (max-width: 1180px) {
   .entry-layout,
   .query-panel,
+  .import-panel__layout,
   .content-grid {
     grid-template-columns: 1fr;
   }
@@ -2031,7 +2244,13 @@ pre {
     flex-direction: column;
   }
 
-  .workspace-query-cta {
+  .workspace-header__actions {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .workspace-query-cta,
+  .workspace-import-cta {
     min-width: 0;
     width: 100%;
     max-width: none;
@@ -2043,6 +2262,7 @@ pre {
   }
 
   .query-mode-switch,
+  .import-panel__toolbar,
   .query-panel__controls,
   .query-panel__results-header,
   .query-panel__header-actions,
