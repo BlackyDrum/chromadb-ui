@@ -72,6 +72,7 @@ const queryEmbedding = ref("");
 const queryResultCount = ref(5);
 const queryResults = ref([]);
 const lastQuerySummary = ref("");
+const hasCompletedQuery = ref(false);
 const queryHistory = ref([]);
 const importMode = ref("upsert");
 const importPayload = ref("");
@@ -1552,11 +1553,14 @@ const runCollectionQuery = async () => {
       }));
     }
 
+    hasCompletedQuery.value = true;
+
     if (historyEntry) {
       appendQueryHistoryEntry(historyEntry);
     }
   } catch (error) {
     queryResults.value = [];
+    hasCompletedQuery.value = false;
 
     toast.add({
       severity: "error",
@@ -1637,6 +1641,7 @@ const handleDisconnect = () => {
   resetEmbeddingViews();
   queryResults.value = [];
   lastQuerySummary.value = "";
+  hasCompletedQuery.value = false;
   showQueryViewer.value = false;
   resetImportState();
   showMetricsViewer.value = false;
@@ -1668,6 +1673,7 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   resetEmbeddingViews();
   queryResults.value = [];
   lastQuerySummary.value = "";
+  hasCompletedQuery.value = false;
   showQueryViewer.value = false;
   resetImportState();
   showMetricsViewer.value = false;
@@ -3541,7 +3547,11 @@ const exportCSV = async (includeEmbeddings = false) => {
         </div>
 
         <div v-else class="query-panel__empty">
-          Run a query to see the nearest matches from the selected collection.
+          {{
+            hasCompletedQuery
+              ? "No results found for the last query."
+              : "Run a query to see the nearest matches from the selected collection."
+          }}
         </div>
       </div>
     </div>
