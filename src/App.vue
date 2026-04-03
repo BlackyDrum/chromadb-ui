@@ -48,6 +48,7 @@ const expandedEmbeddingRows = ref({});
 const collectionOverlayPanel = ref();
 const exportOverlayPanel = ref();
 const metadataFilterOverlayPanel = ref();
+const importFileInput = ref();
 const embeddingDataTable = ref();
 
 const connected = ref(false);
@@ -80,6 +81,7 @@ const hasCompletedQuery = ref(false);
 const queryHistory = ref([]);
 const importMode = ref("upsert");
 const importPayload = ref("");
+const importFileName = ref("");
 const isLoadingMetricsEmbeddings = ref(false);
 const metricsEmbeddingSummary = ref(null);
 
@@ -94,7 +96,7 @@ const entryHighlights = [
     label: "Paste-first imports",
     value: "Import JSON records",
     description:
-      "Paste JSON or JSONL, then add or upsert records into the active collection.",
+      "Paste JSON, then add or upsert records into the active collection.",
   },
   {
     label: "Inline control",
@@ -165,6 +167,11 @@ const resetImportState = () => {
   showImportViewer.value = false;
   importMode.value = "upsert";
   importPayload.value = "";
+  importFileName.value = "";
+
+  if (importFileInput.value) {
+    importFileInput.value.value = "";
+  }
 };
 
 const hasRecordField = (record, field) =>
@@ -685,6 +692,14 @@ const hasQueryResults = computed(() => queryResults.value.length > 0);
 
 const importActionLabel = computed(() => {
   return importMode.value === "upsert" ? "Run upsert" : "Add records";
+});
+
+const importSourceLabel = computed(() => {
+  if (!importPayload.value.trim()) return "Paste a payload or upload a file.";
+
+  return importFileName.value
+    ? `Loaded from ${importFileName.value}`
+    : "Using the current editor content.";
 });
 
 const currentCollectionQueryHistory = computed(() => {
@@ -1258,17 +1273,80 @@ const rerunQueryHistoryEntry = async (entry) => {
   await runCollectionQuery();
 };
 
+const updateImportPayload = (value, source = "manual") => {
+  importPayload.value = value;
+
+  if (source !== "file") {
+    importFileName.value = "";
+
+    if (source === "manual" && importFileInput.value) {
+      importFileInput.value.value = "";
+    }
+  }
+};
+
+const triggerImportFilePicker = () => {
+  importFileInput.value?.click?.();
+};
+
+const clearImportedFile = () => {
+  importFileName.value = "";
+
+  if (importFileInput.value) {
+    importFileInput.value.value = "";
+  }
+};
+
+const handleImportFileSelection = async (event) => {
+  const selectedFile = event?.target?.files?.[0];
+
+  if (!selectedFile) return;
+
+  const normalizedName = selectedFile.name.toLowerCase();
+  const isSupportedFile = normalizedName.endsWith(".json");
+
+  if (!isSupportedFile) {
+    clearImportedFile();
+    toast.add({
+      severity: "error",
+      summary: "Unsupported file",
+      detail: "Choose a .json file for import.",
+      life: 5000,
+    });
+    return;
+  }
+
+  try {
+    const fileText = await selectedFile.text();
+    updateImportPayload(fileText, "file");
+    importFileName.value = selectedFile.name;
+
+    toast.add({
+      severity: "success",
+      summary: "File loaded",
+      detail: `${selectedFile.name} has been loaded.`,
+      life: 3000,
+    });
+  } catch (_) {
+    clearImportedFile();
+    toast.add({
+      severity: "error",
+      summary: "Read failed",
+      detail: `Unable to read ${selectedFile.name}.`,
+      life: 5000,
+    });
+  }
+};
+
 const loadImportExample = () => {
-  importPayload.value = IMPORT_EXAMPLE_PAYLOAD;
+  updateImportPayload(IMPORT_EXAMPLE_PAYLOAD, "example");
 };
 
 const parseImportRecords = (value) => {
   const trimmedValue = value.trim();
 
   if (!trimmedValue) {
-    throw new Error(
-      "Paste a JSON array, a single object, or JSON Lines before importing.",
-    );
+    throw new Error("Paste a JSON array or a single object before importing.");
   }
 
   let parsedValue;
@@ -3458,8 +3536,8 @@ const exportCSV = async (includeEmbeddings = false) => {
       <div class="panel-heading">
         <div>
           <p class="import-panel__copy">
-            Paste a JSON array, a single JSON object, or JSON Lines. Each record
-            needs an <b>id</b> and an <b>embedding</b>. <b>document</b> and
+            Paste a JSON array or a single JSON object. Each record needs an
+            <b>id</b> and an <b>embedding</b>. <b>document</b> and
             <b>metadata</b> are optional.
           </p>
         </div>
@@ -3499,19 +3577,74 @@ const exportCSV = async (includeEmbeddings = false) => {
 
       <div class="import-panel__layout">
         <div class="import-panel__form">
+          <input
+            ref="importFileInput"
+            class="import-panel__file-input"
+            type="file"
+            accept=".json,application/json"
+            @change="handleImportFileSelection"
+          />
+
           <div class="import-panel__toolbar">
-            <p class="import-panel__hint">
-              Embeddings are required here and must match the active
-              collection's dimension size.
-            </p>
+            <div class="import-panel__toolbar-copy">
+              <p class="section-kicker">Choose a source</p>
+              <h3>Paste, upload, or start from an example</h3>
+            </div>
+
+            <div class="import-source-actions">
+              <button
+                class="import-source-action"
+                type="button"
+                :disabled="Boolean(importFileName)"
+                @click="triggerImportFilePicker"
+              >
+                <span class="import-source-action__icon">
+                  <i class="pi pi-upload"></i>
+                </span>
+                <span class="import-source-action__copy">
+                  <strong>Upload file</strong>
+                  <span>Load a <code>.json</code> file.</span>
+                </span>
+              </button>
+
+              <button
+                class="import-source-action import-source-action--subtle"
+                type="button"
+                @click="loadImportExample"
+              >
+                <span class="import-source-action__icon">
+                  <i class="pi pi-file-edit"></i>
+                </span>
+                <span class="import-source-action__copy">
+                  <strong>Load example</strong>
+                  <span>Insert a valid starter payload instantly.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div class="import-panel__note">
+            <i class="pi pi-info-circle"></i>
+            <span>
+              Embeddings are required and must match the selected collection's
+              dimension size.
+            </span>
+          </div>
+
+          <div class="import-source-card">
+            <div class="import-source-card__copy">
+              <p class="section-kicker">Source</p>
+              <strong>{{ importSourceLabel }}</strong>
+            </div>
 
             <button
+              v-if="importFileName"
               class="mini-button mini-button--ghost"
               type="button"
-              @click="loadImportExample"
+              @click="clearImportedFile"
             >
-              <i class="pi pi-file-edit"></i>
-              <span>Load example</span>
+              <i class="pi pi-times"></i>
+              <span>Clear file</span>
             </button>
           </div>
 
@@ -3522,17 +3655,10 @@ const exportCSV = async (includeEmbeddings = false) => {
               optional <code>document</code>, optional <code>metadata</code>.
             </span>
             <textarea
-              v-model="importPayload"
+              :value="importPayload"
               class="import-panel__textarea scroll-container"
               rows="18"
-              placeholder='[
-  {
-    "id": "support-001",
-    "embedding": [0.12, -0.44, 0.87, 0.03],
-    "document": "How to reset a password in the admin portal.",
-    "metadata": { "topic": "auth" }
-  }
-]'
+              @input="updateImportPayload($event.target.value)"
             ></textarea>
           </label>
         </div>
