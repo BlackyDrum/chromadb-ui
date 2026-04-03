@@ -65,6 +65,7 @@ const mobileSidebarOpen = ref(false);
 const collectionSearch = ref("");
 const showQueryViewer = ref(false);
 const showImportViewer = ref(false);
+const showMetricsViewer = ref(false);
 const queryMode = ref("text");
 const queryText = ref("");
 const queryEmbedding = ref("");
@@ -73,6 +74,8 @@ const queryResults = ref([]);
 const lastQuerySummary = ref("");
 const importMode = ref("upsert");
 const importPayload = ref("");
+const isLoadingMetricsEmbeddings = ref(false);
+const metricsEmbeddingSummary = ref(null);
 
 const entryHighlights = [
   {
@@ -102,6 +105,7 @@ onBeforeMount(() => {
 const EMBEDDING_PREVIEW_SAMPLE_COUNT = 6;
 const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
+const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const IMPORT_EXAMPLE_PAYLOAD = `[
   {
     "id": "support-001",
@@ -135,6 +139,12 @@ const safeStringify = (value, pretty = false) => {
 
 const formatNumber = (value) => new Intl.NumberFormat().format(value ?? 0);
 
+const formatPercentage = (value, total) => {
+  if (!total) return "0%";
+
+  return `${Math.round((value / total) * 100)}%`;
+};
+
 const resetImportState = () => {
   showImportViewer.value = false;
   importMode.value = "upsert";
@@ -143,6 +153,55 @@ const resetImportState = () => {
 
 const hasRecordField = (record, field) =>
   Object.prototype.hasOwnProperty.call(record, field);
+
+const parseMetadataValue = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "null"
+  ) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return null;
+  }
+};
+
+const countWords = (value) => {
+  const normalizedValue = `${value ?? ""}`.trim();
+
+  if (!normalizedValue) return 0;
+
+  return normalizedValue.split(/\s+/).length;
+};
+
+const sampleRows = (rows, sampleSize) => {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  if (rows.length <= sampleSize) return rows;
+
+  const step = (rows.length - 1) / (sampleSize - 1);
+  const sampledRows = [];
+  const seenIndexes = new Set();
+
+  for (let sampleIndex = 0; sampleIndex < sampleSize; sampleIndex += 1) {
+    const rowIndex = Math.min(rows.length - 1, Math.round(sampleIndex * step));
+
+    if (seenIndexes.has(rowIndex)) continue;
+
+    sampledRows.push(rows[rowIndex]);
+    seenIndexes.add(rowIndex);
+  }
+
+  return sampledRows;
+};
 
 const formatEmbeddingNumber = (value) => {
   if (!Number.isFinite(value)) return String(value);
@@ -360,6 +419,100 @@ const collectionMetadataPreview = computed(() => {
   }
 
   return safeStringify(currentCollection.value.metadata, true);
+});
+
+const collectionMetrics = computed(() => {
+  const totalRows = currentCollectionData.value.length;
+  const metadataKeyCounts = {};
+  let rowsWithDocuments = 0;
+  let rowsWithMetadata = 0;
+  let totalDocumentWords = 0;
+  let totalDocumentCharacters = 0;
+  let longestDocumentWords = 0;
+
+  for (const row of currentCollectionData.value) {
+    const documentText = `${row.document ?? ""}`.trim();
+    const metadataValue = parseMetadataValue(row.metadata);
+    const wordCount = countWords(documentText);
+
+    if (documentText) {
+      rowsWithDocuments += 1;
+    }
+
+    if (metadataValue !== null) {
+      rowsWithMetadata += 1;
+    }
+
+    totalDocumentWords += wordCount;
+    totalDocumentCharacters += documentText.length;
+    longestDocumentWords = Math.max(longestDocumentWords, wordCount);
+
+    if (
+      metadataValue &&
+      typeof metadataValue === "object" &&
+      !Array.isArray(metadataValue)
+    ) {
+      for (const key of Object.keys(metadataValue)) {
+        metadataKeyCounts[key] = (metadataKeyCounts[key] ?? 0) + 1;
+      }
+    }
+  }
+
+  const metadataKeyStats = Object.entries(metadataKeyCounts)
+    .sort((leftEntry, rightEntry) => {
+      if (rightEntry[1] === leftEntry[1]) {
+        return leftEntry[0].localeCompare(rightEntry[0]);
+      }
+
+      return rightEntry[1] - leftEntry[1];
+    })
+    .map(([key, count]) => ({
+      key,
+      count,
+      coverageLabel: formatPercentage(count, totalRows),
+    }));
+
+  return {
+    totalRows,
+    rowsWithDocuments,
+    rowsWithMetadata,
+    documentCoverageLabel: formatPercentage(rowsWithDocuments, totalRows),
+    metadataCoverageLabel: formatPercentage(rowsWithMetadata, totalRows),
+    averageWordCountLabel: totalRows
+      ? formatNumber(Math.round(totalDocumentWords / totalRows))
+      : "0",
+    averageCharacterCountLabel: totalRows
+      ? formatNumber(Math.round(totalDocumentCharacters / totalRows))
+      : "0",
+    longestDocumentWordsLabel: formatNumber(longestDocumentWords),
+    metadataKeyCountLabel: formatNumber(metadataKeyStats.length),
+    topMetadataKeys: metadataKeyStats.slice(0, 8),
+  };
+});
+
+const collectionMetricCards = computed(() => {
+  return [
+    {
+      label: "Loaded rows",
+      value: formatNumber(collectionMetrics.value.totalRows),
+      description: "Records currently loaded from the selected collection.",
+    },
+    {
+      label: "Document coverage",
+      value: collectionMetrics.value.documentCoverageLabel,
+      description: `${formatNumber(collectionMetrics.value.rowsWithDocuments)} rows include document text.`,
+    },
+    {
+      label: "Metadata coverage",
+      value: collectionMetrics.value.metadataCoverageLabel,
+      description: `${formatNumber(collectionMetrics.value.rowsWithMetadata)} rows include metadata.`,
+    },
+    {
+      label: "Avg document",
+      value: `${collectionMetrics.value.averageWordCountLabel} words`,
+      description: `${collectionMetrics.value.averageCharacterCountLabel} characters on average.`,
+    },
+  ];
 });
 
 const dashboardMetrics = computed(() => {
@@ -715,6 +868,104 @@ const copyCollectionId = async () => {
     "Collection ID copied to the clipboard.",
     "Unable to copy the collection ID.",
   );
+};
+
+const loadMetricsEmbeddingSummary = async () => {
+  if (
+    !currentCollection.value ||
+    !currentCollectionData.value.length ||
+    isLoadingMetricsEmbeddings.value
+  ) {
+    return;
+  }
+
+  const activeCollectionId = currentCollection.value.id;
+  const sampledRows = sampleRows(
+    currentCollectionData.value,
+    METRICS_EMBEDDING_SAMPLE_SIZE,
+  );
+
+  if (!sampledRows.length) {
+    metricsEmbeddingSummary.value = null;
+    return;
+  }
+
+  isLoadingMetricsEmbeddings.value = true;
+
+  try {
+    const response = await axios.post(
+      `${collectionBaseUrl.value}/${activeCollectionId}/get`,
+      {
+        ids: sampledRows.map((row) => row.id),
+        include: ["embeddings"],
+      },
+    );
+    const embeddings = Array.isArray(response.data?.embeddings)
+      ? response.data.embeddings
+      : [];
+    const dimensionCounts = {};
+    let returnedVectors = 0;
+    let missingVectors = 0;
+    let normTotal = 0;
+
+    for (const embedding of embeddings) {
+      if (!Array.isArray(embedding) || !embedding.length) {
+        missingVectors += 1;
+        continue;
+      }
+
+      returnedVectors += 1;
+      dimensionCounts[embedding.length] =
+        (dimensionCounts[embedding.length] ?? 0) + 1;
+
+      const norm = Math.sqrt(
+        embedding.reduce((total, value) => total + value * value, 0),
+      );
+      normTotal += norm;
+    }
+
+    const dimensionBreakdown = Object.entries(dimensionCounts)
+      .map(([dimension, count]) => ({
+        dimension: Number(dimension),
+        count,
+        coverageLabel: formatPercentage(count, sampledRows.length),
+      }))
+      .sort((leftEntry, rightEntry) => rightEntry.count - leftEntry.count);
+
+    metricsEmbeddingSummary.value = {
+      sampleSize: sampledRows.length,
+      returnedVectors,
+      missingVectors,
+      dominantDimension: dimensionBreakdown[0]?.dimension ?? null,
+      averageNormLabel: returnedVectors
+        ? formatEmbeddingNumber(normTotal / returnedVectors)
+        : "n/a",
+      consistencyLabel: !returnedVectors
+        ? "No embeddings returned in the sample."
+        : dimensionBreakdown.length === 1 && !missingVectors
+          ? "Dimensions are consistent across the sampled rows."
+          : "Mixed dimensions or missing vectors detected in the sample.",
+      dimensionBreakdown,
+    };
+  } catch (error) {
+    metricsEmbeddingSummary.value = null;
+    toast.add({
+      severity: "error",
+      summary: "Metrics unavailable",
+      detail: `Unable to sample embedding metrics. Reason: ${getErrorMessage(error)}`,
+      life: 5000,
+    });
+  } finally {
+    isLoadingMetricsEmbeddings.value = false;
+  }
+};
+
+const openMetricsViewer = async () => {
+  if (!currentCollection.value) return;
+
+  showMetricsViewer.value = true;
+  metricsEmbeddingSummary.value = null;
+  await loadMetricsEmbeddingSummary();
 };
 
 const formatQueryDistance = (distance) => {
@@ -1271,6 +1522,8 @@ const handleDisconnect = () => {
   lastQuerySummary.value = "";
   showQueryViewer.value = false;
   resetImportState();
+  showMetricsViewer.value = false;
+  metricsEmbeddingSummary.value = null;
 };
 
 const update = async () => {
@@ -1300,6 +1553,8 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   lastQuerySummary.value = "";
   showQueryViewer.value = false;
   resetImportState();
+  showMetricsViewer.value = false;
+  metricsEmbeddingSummary.value = null;
 
   try {
     const response = await axios.post(
@@ -1428,6 +1683,8 @@ const handleCollectionDeletion = () => {
           lastQuerySummary.value = "";
           showQueryViewer.value = false;
           resetImportState();
+          showMetricsViewer.value = false;
+          metricsEmbeddingSummary.value = null;
         }
 
         const collectionIndex = collections.value.findIndex(
@@ -2087,25 +2344,46 @@ const exportCSV = async (includeEmbeddings = false) => {
                 </span>
               </button>
 
-              <button
-                class="workspace-import-cta"
-                type="button"
-                :disabled="!currentCollection"
-                @click="showImportViewer = true"
-              >
-                <span class="workspace-import-cta__icon">
-                  <i class="pi pi-upload"></i>
-                </span>
+              <div class="workspace-header__side-actions">
+                <button
+                  class="workspace-import-cta"
+                  type="button"
+                  :disabled="!currentCollection"
+                  @click="showImportViewer = true"
+                >
+                  <span class="workspace-import-cta__icon">
+                    <i class="pi pi-upload"></i>
+                  </span>
 
-                <span class="workspace-import-cta__copy">
-                  <small>Data import</small>
-                  <strong>Open Importer</strong>
-                  <span
-                    >Paste records as JSON and add or upsert them into this
-                    collection.</span
-                  >
-                </span>
-              </button>
+                  <span class="workspace-import-cta__copy">
+                    <small>Data import</small>
+                    <strong>Open Importer</strong>
+                    <span
+                      >Paste records as JSON and add or upsert them into this
+                      collection.</span
+                    >
+                  </span>
+                </button>
+
+                <button
+                  class="workspace-metrics-cta"
+                  type="button"
+                  :disabled="!currentCollection"
+                  @click="openMetricsViewer"
+                >
+                  <span class="workspace-metrics-cta__icon">
+                    <i class="pi pi-chart-line"></i>
+                  </span>
+
+                  <span class="workspace-metrics-cta__copy">
+                    <small>Collection metrics</small>
+                    <strong>Open Metrics</strong>
+                    <span
+                      >Review detailed stats for the selected collection.</span
+                    >
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2546,6 +2824,205 @@ const exportCSV = async (includeEmbeddings = false) => {
       </section>
     </main>
   </div>
+
+  <Dialog
+    v-model:visible="showMetricsViewer"
+    modal
+    :draggable="false"
+    class="metrics-dialog"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Collection metrics</p>
+        <h2>Read the shape of this collection</h2>
+      </div>
+    </template>
+
+    <div class="metrics-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="metrics-panel__copy">
+            Review document, metadata, and sampled embedding metrics for the
+            selected collection.
+          </p>
+        </div>
+
+        <div class="query-panel__header-actions">
+          <span class="tag-chip">
+            {{
+              currentCollection ? currentCollection.name : "Select a collection"
+            }}
+          </span>
+        </div>
+      </div>
+
+      <div class="metrics-card-grid">
+        <article
+          v-for="metric in collectionMetricCards"
+          :key="metric.label"
+          class="metrics-summary-card"
+        >
+          <p class="section-kicker">{{ metric.label }}</p>
+          <h3>{{ metric.value }}</h3>
+          <p>{{ metric.description }}</p>
+        </article>
+      </div>
+
+      <div class="metrics-grid">
+        <article class="metrics-section">
+          <div class="metrics-section__header">
+            <div>
+              <p class="section-kicker">Content profile</p>
+              <h3>Documents at a glance</h3>
+            </div>
+
+            <span class="metrics-section__eyebrow">
+              {{ collectionMetrics.documentCoverageLabel }} with text
+            </span>
+          </div>
+
+          <div class="metrics-list">
+            <div class="metrics-list__row">
+              <span>Loaded rows</span>
+              <strong>{{ formatNumber(collectionMetrics.totalRows) }}</strong>
+            </div>
+            <div class="metrics-list__row">
+              <span>Rows with documents</span>
+              <strong>{{
+                formatNumber(collectionMetrics.rowsWithDocuments)
+              }}</strong>
+            </div>
+            <div class="metrics-list__row">
+              <span>Average document length</span>
+              <strong
+                >{{ collectionMetrics.averageWordCountLabel }} words</strong
+              >
+            </div>
+            <div class="metrics-list__row">
+              <span>Longest document</span>
+              <strong
+                >{{ collectionMetrics.longestDocumentWordsLabel }} words</strong
+              >
+            </div>
+          </div>
+        </article>
+
+        <article class="metrics-section">
+          <div class="metrics-section__header">
+            <div>
+              <p class="section-kicker">Metadata profile</p>
+              <h3>Most common keys</h3>
+            </div>
+
+            <span class="metrics-section__eyebrow">
+              {{ collectionMetrics.metadataKeyCountLabel }} unique
+            </span>
+          </div>
+
+          <div
+            v-if="collectionMetrics.topMetadataKeys.length"
+            class="metrics-chip-grid"
+          >
+            <article
+              v-for="keyStat in collectionMetrics.topMetadataKeys"
+              :key="keyStat.key"
+              class="metrics-chip"
+            >
+              <strong>{{ keyStat.key }}</strong>
+              <span>{{ formatNumber(keyStat.count) }} rows</span>
+              <small>{{ keyStat.coverageLabel }}</small>
+            </article>
+          </div>
+
+          <p v-else class="metrics-empty-copy">
+            No metadata keys were detected in the loaded rows.
+          </p>
+        </article>
+      </div>
+
+      <article class="metrics-section metrics-section--full">
+        <div class="metrics-section__header">
+          <div>
+            <p class="section-kicker">Embedding sample</p>
+            <h3>Vector consistency snapshot</h3>
+          </div>
+
+          <span class="metrics-section__eyebrow">
+            {{
+              currentCollectionData.length
+                ? `Sampling up to ${formatNumber(
+                    METRICS_EMBEDDING_SAMPLE_SIZE,
+                  )} rows`
+                : "No rows loaded"
+            }}
+          </span>
+        </div>
+
+        <div v-if="isLoadingMetricsEmbeddings" class="metrics-loading">
+          <i class="pi pi-spin pi-spinner"></i>
+          <span>Sampling embeddings for dimension and norm metrics...</span>
+        </div>
+
+        <div v-else-if="metricsEmbeddingSummary" class="metrics-embedding-grid">
+          <article class="metrics-summary-card">
+            <p class="section-kicker">Dominant size</p>
+            <h3>
+              {{
+                metricsEmbeddingSummary.dominantDimension
+                  ? `${formatNumber(
+                      metricsEmbeddingSummary.dominantDimension,
+                    )} dims`
+                  : "Unavailable"
+              }}
+            </h3>
+            <p>{{ metricsEmbeddingSummary.consistencyLabel }}</p>
+          </article>
+
+          <article class="metrics-summary-card">
+            <p class="section-kicker">Vectors returned</p>
+            <h3>{{ formatNumber(metricsEmbeddingSummary.returnedVectors) }}</h3>
+            <p>
+              {{
+                metricsEmbeddingSummary.missingVectors
+                  ? `${formatNumber(
+                      metricsEmbeddingSummary.missingVectors,
+                    )} sampled rows returned no embedding.`
+                  : "Every sampled row returned an embedding."
+              }}
+            </p>
+          </article>
+
+          <article class="metrics-summary-card">
+            <p class="section-kicker">Average norm</p>
+            <h3>{{ metricsEmbeddingSummary.averageNormLabel }}</h3>
+            <p>
+              Based on {{ formatNumber(metricsEmbeddingSummary.sampleSize) }}
+              sampled rows.
+            </p>
+          </article>
+
+          <div
+            v-if="metricsEmbeddingSummary.dimensionBreakdown.length"
+            class="metrics-chip-grid metrics-chip-grid--wide"
+          >
+            <article
+              v-for="dimensionStat in metricsEmbeddingSummary.dimensionBreakdown"
+              :key="dimensionStat.dimension"
+              class="metrics-chip"
+            >
+              <strong>{{ formatNumber(dimensionStat.dimension) }} dims</strong>
+              <span>{{ formatNumber(dimensionStat.count) }} sampled</span>
+              <small>{{ dimensionStat.coverageLabel }}</small>
+            </article>
+          </div>
+        </div>
+
+        <p v-else class="metrics-empty-copy">
+          Open a collection with rows to analyze sampled embedding metrics.
+        </p>
+      </article>
+    </div>
+  </Dialog>
 
   <Dialog
     v-model:visible="showImportViewer"
