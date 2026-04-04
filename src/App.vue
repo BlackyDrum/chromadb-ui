@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeMount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeMount, ref, watch } from "vue";
 
 import axios from "axios";
 
@@ -56,6 +56,7 @@ const exportOverlayPanel = ref();
 const metadataFilterOverlayPanel = ref();
 const importFileInput = ref();
 const embeddingDataTable = ref();
+const queryResultsSection = ref(null);
 
 const connected = ref(false);
 const isInitializingConnection = ref(false);
@@ -1667,6 +1668,18 @@ const appendQueryHistoryEntry = (entry) => {
   storeQueryHistory(nextHistory);
 };
 
+const scrollToQueryResults = async () => {
+  await nextTick();
+
+  if (!showQueryViewer.value || !queryResultsSection.value) return;
+
+  queryResultsSection.value.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+    inline: "nearest",
+  });
+};
+
 const clearCurrentCollectionQueryHistory = () => {
   if (!currentCollection.value) return;
 
@@ -2142,143 +2155,6 @@ const saveEmbedding = async (id) => {
   }
 };
 
-const legacyRunCollectionQuery = async () => {
-  if (!currentCollection.value || isQueryingCollection.value) return;
-
-  const resultCount = Math.max(1, Number(queryResultCount.value) || 5);
-  let historyEntry = null;
-
-  if (queryMode.value === "text") {
-    const trimmedQueryText = queryText.value.trim();
-
-    if (!trimmedQueryText) {
-      toast.add({
-        severity: "error",
-        summary: "Missing search text",
-        detail: "Enter text before running a search.",
-        life: 4000,
-      });
-      return;
-    }
-
-    lastQuerySummary.value = `Text search: ${trimmedQueryText}`;
-    historyEntry = {
-      id: `${currentCollection.value.id}:text:${trimmedQueryText.toLowerCase()}:${resultCount}`,
-      collectionId: currentCollection.value.id,
-      collectionName: currentCollection.value.name,
-      mode: "text",
-      value: trimmedQueryText,
-      preview: truncateText(trimmedQueryText, 72),
-      resultCount,
-      summary: lastQuerySummary.value,
-      timestamp: new Date().toISOString(),
-    };
-  } else {
-    let parsedEmbedding;
-
-    try {
-      parsedEmbedding = parseQueryEmbedding(queryEmbedding.value);
-    } catch (error) {
-      toast.add({
-        severity: "error",
-        summary: "Invalid query embedding",
-        detail: error.message,
-        life: 5000,
-      });
-      return;
-    }
-
-    lastQuerySummary.value = `Embedding query • ${formatNumber(parsedEmbedding.length)} dims`;
-    historyEntry = {
-      id: `${currentCollection.value.id}:embedding:${safeStringify(parsedEmbedding)}:${resultCount}`,
-      collectionId: currentCollection.value.id,
-      collectionName: currentCollection.value.name,
-      mode: "embedding",
-      value: JSON.stringify(parsedEmbedding),
-      preview: `${formatNumber(parsedEmbedding.length)} dims • ${truncateText(
-        parsedEmbedding
-          .slice(0, 4)
-          .map((value) => formatEmbeddingNumber(value))
-          .join(", "),
-        48,
-      )}`,
-      resultCount,
-      summary: lastQuerySummary.value,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  isQueryingCollection.value = true;
-
-  try {
-    if (queryMode.value === "text") {
-      const response = await axios.post(
-        `${collectionBaseUrl.value}/${currentCollection.value.id}/get`,
-        {
-          where_document: {
-            $contains: queryText.value.trim(),
-          },
-          limit: resultCount,
-          include: ["documents", "metadatas"],
-        },
-      );
-
-      const ids = response.data?.ids ?? [];
-      const documents = response.data?.documents ?? [];
-      const metadatas = response.data?.metadatas ?? [];
-
-      queryResults.value = ids.map((id, index) => ({
-        id,
-        document: documents[index] ?? "",
-        metadata: safeStringify(metadatas[index], true),
-        distance: null,
-        matchType: "text",
-      }));
-    } else {
-      const parsedEmbedding = parseQueryEmbedding(queryEmbedding.value);
-      const response = await axios.post(
-        `${collectionBaseUrl.value}/${currentCollection.value.id}/query`,
-        {
-          query_embeddings: [parsedEmbedding],
-          n_results: resultCount,
-          include: ["documents", "metadatas", "distances"],
-        },
-      );
-
-      const ids = response.data?.ids?.[0] ?? [];
-      const documents = response.data?.documents?.[0] ?? [];
-      const metadatas = response.data?.metadatas?.[0] ?? [];
-      const distances = response.data?.distances?.[0] ?? [];
-
-      queryResults.value = ids.map((id, index) => ({
-        id,
-        document: documents[index] ?? "",
-        metadata: safeStringify(metadatas[index], true),
-        distance: distances[index],
-        matchType: "embedding",
-      }));
-    }
-
-    hasCompletedQuery.value = true;
-
-    if (historyEntry) {
-      appendQueryHistoryEntry(historyEntry);
-    }
-  } catch (error) {
-    queryResults.value = [];
-    hasCompletedQuery.value = false;
-
-    toast.add({
-      severity: "error",
-      summary: "Query failed",
-      detail: getErrorMessage(error),
-      life: 5000,
-    });
-  } finally {
-    isQueryingCollection.value = false;
-  }
-};
-
 const runCollectionQuery = async () => {
   if (!currentCollection.value || isQueryingCollection.value) return;
 
@@ -2375,6 +2251,8 @@ const runCollectionQuery = async () => {
     if (historyEntry) {
       appendQueryHistoryEntry(historyEntry);
     }
+
+    await scrollToQueryResults();
   } catch (error) {
     queryResults.value = [];
     hasCompletedQuery.value = false;
@@ -4789,7 +4667,7 @@ const exportCSV = async (includeEmbeddings = false) => {
         </section>
       </div>
 
-      <div class="query-panel__results">
+      <div ref="queryResultsSection" class="query-panel__results">
         <div class="query-panel__results-header">
           <div>
             <p class="section-kicker">Results</p>

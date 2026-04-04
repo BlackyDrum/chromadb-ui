@@ -1103,6 +1103,7 @@ pre {
     rgba(255, 255, 255, 0.02)
   );
   align-self: stretch;
+  scroll-margin-top: 1rem;
 }
 
 .query-panel__copy,
