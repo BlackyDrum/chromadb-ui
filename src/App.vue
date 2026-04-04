@@ -3175,7 +3175,7 @@ const exportCSV = async (includeEmbeddings = false) => {
 
 <template>
   <Toast />
-  <ConfirmDialog />
+  <ConfirmDialog :draggable="false" class="confirm-dialog" />
 
   <div v-if="!connected" class="entry-view">
     <div class="backdrop-orb backdrop-orb--mint"></div>
