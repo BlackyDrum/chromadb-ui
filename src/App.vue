@@ -1531,10 +1531,34 @@ const handleImportRecords = async () => {
 
   const payloadGroups = buildImportPayloadGroups(parsedRecords);
   const activeCollectionId = currentCollection.value.id;
-  const endpoint = importMode.value === "add" ? "add" : "upsert";
+  const isAddOnly = importMode.value === "add";
+  const endpoint = isAddOnly ? "add" : "upsert";
+  const successVerb = isAddOnly ? "Added" : "Upserted";
   const recordsWithEmbeddings = parsedRecords.filter((record) =>
     hasRecordField(record, "embedding"),
   ).length;
+
+  if (isAddOnly) {
+    const existingIds = new Set(
+      currentCollectionData.value.map((record) => record.id),
+    );
+    const duplicateIds = parsedRecords
+      .map((record) => record.id)
+      .filter((id) => existingIds.has(id));
+
+    if (duplicateIds.length) {
+      const previewIds = duplicateIds.slice(0, 3).join(", ");
+      const remainingCount = duplicateIds.length - Math.min(duplicateIds.length, 3);
+
+      toast.add({
+        severity: "error",
+        summary: "Duplicate record IDs",
+        detail: `Add only cannot import records that already exist. Duplicate IDs: ${previewIds}${remainingCount > 0 ? ` and ${remainingCount} more` : ""}. Use Upsert if you want to overwrite existing rows.`,
+        life: 7000,
+      });
+      return;
+    }
+  }
 
   isImportingRecords.value = true;
 
@@ -1549,7 +1573,7 @@ const handleImportRecords = async () => {
     toast.add({
       severity: "success",
       summary: "Import complete",
-      detail: `${importMode.value === "add" ? "Added" : "Upserted"} ${formatNumber(parsedRecords.length)} records${recordsWithEmbeddings ? `, including ${formatNumber(recordsWithEmbeddings)} explicit embeddings` : ""}.`,
+      detail: `${successVerb} ${formatNumber(parsedRecords.length)} records${recordsWithEmbeddings ? `, including ${formatNumber(recordsWithEmbeddings)} explicit embeddings` : ""}.`,
       life: 5000,
     });
 
