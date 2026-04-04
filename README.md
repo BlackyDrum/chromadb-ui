@@ -3,7 +3,7 @@
 ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls.
 
 > [!IMPORTANT]  
-> ChromaDB UI only works with the Chroma v2 API
+> **ChromaDB UI only works with the Chroma v2 API**
 
 ## Showcase
 
