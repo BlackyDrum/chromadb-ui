@@ -1067,8 +1067,8 @@ pre {
 .query-panel--dialog {
   padding: 0;
   border-radius: 0;
-  gap: 1rem;
-  grid-template-columns: minmax(19rem, 21rem) minmax(0, 1fr);
+  gap: 1.15rem;
+  grid-template-columns: minmax(23rem, 25rem) minmax(0, 1fr);
   align-items: start;
 }
 
@@ -1239,6 +1239,84 @@ pre {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.semantic-provider-card {
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.02)
+  );
+}
+
+.semantic-provider-card__header {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.semantic-provider-card__header h3 {
+  font-size: 1.1rem;
+}
+
+.semantic-provider-card__copy {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.semantic-provider-card__status {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(3, 14, 22, 0.52);
+}
+
+.semantic-provider-card__status-chip {
+  gap: 0.55rem;
+}
+
+.semantic-provider-card__status-chip i {
+  font-size: 0.8rem;
+}
+
+.semantic-provider-card__status-copy {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.semantic-provider-switch {
+  display: flex;
+  width: 100%;
+}
+
+.semantic-provider-switch .query-mode-switch__button {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.semantic-provider-card__surface {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.semantic-provider-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.semantic-provider-grid__wide {
+  grid-column: 1 / -1;
 }
 
 .import-panel {
@@ -3068,6 +3146,7 @@ pre {
   .import-source-actions,
   .import-source-card,
   .metadata-filter-menu__toolbar,
+  .semantic-provider-card__header,
   .query-history__header,
   .query-history-card__top,
   .query-history-card__actions,
@@ -3102,6 +3181,10 @@ pre {
   }
 
   .record-dialog__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .semantic-provider-grid {
     grid-template-columns: 1fr;
   }
 

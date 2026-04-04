@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeMount, ref } from "vue";
+import { computed, onBeforeMount, ref, watch } from "vue";
 
 import axios from "axios";
 
@@ -79,7 +79,7 @@ const showMetricsViewer = ref(false);
 const metadataFilterMode = ref("all");
 const metadataFilterRules = ref([]);
 const metadataFilterFocusedRuleId = ref(null);
-const queryMode = ref("text");
+const queryMode = ref("semantic");
 const queryText = ref("");
 const queryEmbedding = ref("");
 const queryResultCount = ref(5);
@@ -87,6 +87,17 @@ const queryResults = ref([]);
 const lastQuerySummary = ref("");
 const hasCompletedQuery = ref(false);
 const queryHistory = ref([]);
+const semanticQuerySettings = ref({
+  provider: "openai",
+  openaiBaseUrl: "https://api.openai.com/v1",
+  openaiModel: "text-embedding-3-small",
+  openaiDimensions: "",
+  ollamaBaseUrl: "http://localhost:11434",
+  ollamaModel: "embeddinggemma",
+});
+const semanticQueryApiKey = ref("");
+const collectionEmbeddingDimensions = ref({});
+const isResolvingCollectionEmbeddingDimension = ref(false);
 const importMode = ref("upsert");
 const importPayload = ref("");
 const importFileName = ref("");
@@ -96,9 +107,9 @@ const metricsEmbeddingSummary = ref(null);
 const entryHighlights = [
   {
     label: "Query workflows",
-    value: "Text and vector search",
+    value: "Semantic and vector search",
     description:
-      "Run text or embedding queries and jump results back into the table.",
+      "Turn text into embeddings or paste vectors directly to query the active collection.",
   },
   {
     label: "Paste-first imports",
@@ -116,6 +127,7 @@ const entryHighlights = [
 
 onBeforeMount(() => {
   retrieveConnectionParameters();
+  retrieveSemanticQuerySettings();
   retrieveQueryHistory();
 });
 
@@ -124,6 +136,7 @@ const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
+const SEMANTIC_QUERY_SETTINGS_STORAGE_KEY = "semantic_query_settings";
 const METADATA_FILTER_OPERATORS = [
   { label: "Equals", value: "equals" },
   { label: "Contains", value: "contains" },
@@ -710,6 +723,50 @@ const dashboardMetrics = computed(() => {
 
 const hasQueryResults = computed(() => queryResults.value.length > 0);
 
+const currentCollectionEmbeddingDimension = computed(() => {
+  if (!currentCollection.value) return null;
+
+  return (
+    collectionEmbeddingDimensions.value[currentCollection.value.id] ?? null
+  );
+});
+
+const semanticProviderLabel = computed(() => {
+  return semanticQuerySettings.value.provider === "ollama"
+    ? "Ollama"
+    : "OpenAI";
+});
+
+const semanticProviderModelLabel = computed(() => {
+  return semanticQuerySettings.value.provider === "ollama"
+    ? semanticQuerySettings.value.ollamaModel
+    : semanticQuerySettings.value.openaiModel;
+});
+
+const semanticProviderDimensionLabel = computed(() => {
+  if (isResolvingCollectionEmbeddingDimension.value) {
+    return "Detecting collection size";
+  }
+
+  if (currentCollectionEmbeddingDimension.value) {
+    return `${formatNumber(currentCollectionEmbeddingDimension.value)} dims in collection`;
+  }
+
+  return "Collection size not detected yet";
+});
+
+const semanticProviderDimensionNote = computed(() => {
+  if (isResolvingCollectionEmbeddingDimension.value) {
+    return "Sampling stored embeddings from the active collection.";
+  }
+
+  if (currentCollectionEmbeddingDimension.value) {
+    return "Detected automatically from sampled collection embeddings.";
+  }
+
+  return "This is detected automatically when the semantic query panel opens.";
+});
+
 const importActionLabel = computed(() => {
   return importMode.value === "upsert" ? "Run upsert" : "Add records";
 });
@@ -924,11 +981,91 @@ const retrieveQueryHistory = () => {
 
   try {
     const parsedHistory = JSON.parse(storedQueryHistory);
-    queryHistory.value = Array.isArray(parsedHistory) ? parsedHistory : [];
+    queryHistory.value = Array.isArray(parsedHistory)
+      ? parsedHistory.map((entry) => ({
+          ...entry,
+          mode: entry?.mode === "embedding" ? "embedding" : "semantic",
+          provider: entry?.provider === "ollama" ? "ollama" : "openai",
+        }))
+      : [];
   } catch (_) {
     queryHistory.value = [];
   }
 };
+
+const normalizeSemanticQuerySettings = (value) => ({
+  provider: value?.provider === "ollama" ? "ollama" : "openai",
+  openaiBaseUrl:
+    `${value?.openaiBaseUrl ?? "https://api.openai.com/v1"}`.trim() ||
+    "https://api.openai.com/v1",
+  openaiModel:
+    `${value?.openaiModel ?? "text-embedding-3-small"}`.trim() ||
+    "text-embedding-3-small",
+  openaiDimensions: `${value?.openaiDimensions ?? ""}`.trim(),
+  ollamaBaseUrl:
+    `${value?.ollamaBaseUrl ?? "http://localhost:11434"}`.trim() ||
+    "http://localhost:11434",
+  ollamaModel:
+    `${value?.ollamaModel ?? "nomic-embed-text"}`.trim() || "nomic-embed-text",
+});
+
+const storeSemanticQuerySettings = (value) => {
+  localStorage.setItem(
+    SEMANTIC_QUERY_SETTINGS_STORAGE_KEY,
+    JSON.stringify(normalizeSemanticQuerySettings(value)),
+  );
+};
+
+const retrieveSemanticQuerySettings = () => {
+  const storedSettings = localStorage.getItem(
+    SEMANTIC_QUERY_SETTINGS_STORAGE_KEY,
+  );
+  if (!storedSettings) return;
+
+  try {
+    semanticQuerySettings.value = normalizeSemanticQuerySettings(
+      JSON.parse(storedSettings),
+    );
+  } catch (_) {
+    semanticQuerySettings.value = normalizeSemanticQuerySettings(
+      semanticQuerySettings.value,
+    );
+  }
+};
+
+watch(
+  semanticQuerySettings,
+  (nextSettings) => {
+    storeSemanticQuerySettings(nextSettings);
+  },
+  { deep: true },
+);
+
+watch(
+  [
+    showQueryViewer,
+    queryMode,
+    () => currentCollection.value?.id ?? null,
+    () => currentCollectionData.value.length,
+  ],
+  async ([
+    isQueryViewerOpen,
+    activeQueryMode,
+    activeCollectionId,
+    loadedRows,
+  ]) => {
+    if (
+      !isQueryViewerOpen ||
+      activeQueryMode !== "semantic" ||
+      !activeCollectionId ||
+      !loadedRows
+    ) {
+      return;
+    }
+
+    await resolveCollectionEmbeddingDimension();
+  },
+);
 
 const initializeTenantAndDatabase = async () => {
   await Promise.all([
@@ -969,6 +1106,7 @@ const retrieveCollections = async () => {
 
     if (!refreshedCurrentCollection) {
       currentCollectionData.value = [];
+      collectionEmbeddingDimensions.value = {};
       resetTableFilters();
       resetEmbeddingViews();
       resetCreateRecordState();
@@ -1227,11 +1365,11 @@ const formatQueryDistance = (distance) => {
 };
 
 const getQueryResultLabel = (result) => {
-  if (result.matchType === "embedding") {
-    return `Distance ${formatQueryDistance(result.distance)}`;
+  if (result.matchType === "semantic") {
+    return `Semantic distance ${formatQueryDistance(result.distance)}`;
   }
 
-  return "Text match";
+  return `Vector distance ${formatQueryDistance(result.distance)}`;
 };
 
 const parseQueryEmbedding = (value) => {
@@ -1260,6 +1398,263 @@ const parseQueryEmbedding = (value) => {
   return vector;
 };
 
+const normalizeUrlBase = (value, fallbackValue) => {
+  const trimmedValue = `${value ?? ""}`.trim();
+  return (trimmedValue || fallbackValue).replace(/\/+$/, "");
+};
+
+const buildOpenAiEmbeddingsUrl = (baseUrl) => {
+  const normalizedBaseUrl = normalizeUrlBase(
+    baseUrl,
+    "https://api.openai.com/v1",
+  );
+
+  return normalizedBaseUrl.endsWith("/embeddings")
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/embeddings`;
+};
+
+const buildOllamaEmbedUrl = (baseUrl) => {
+  const normalizedBaseUrl = normalizeUrlBase(baseUrl, "http://localhost:11434");
+
+  if (normalizedBaseUrl.endsWith("/api/embed")) {
+    return normalizedBaseUrl;
+  }
+
+  if (normalizedBaseUrl.endsWith("/api")) {
+    return `${normalizedBaseUrl}/embed`;
+  }
+
+  return `${normalizedBaseUrl}/api/embed`;
+};
+
+const parsePositiveInteger = (value, fieldLabel) => {
+  const trimmedValue = `${value ?? ""}`.trim();
+  if (!trimmedValue) return null;
+
+  const parsedValue = Number(trimmedValue);
+
+  if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+    throw new Error(`${fieldLabel} must be a positive whole number.`);
+  }
+
+  return parsedValue;
+};
+
+const ensureEmbeddingVector = (embedding, errorLabel) => {
+  if (
+    !Array.isArray(embedding) ||
+    !embedding.length ||
+    !embedding.every(
+      (entry) => typeof entry === "number" && Number.isFinite(entry),
+    )
+  ) {
+    throw new Error(errorLabel);
+  }
+
+  return embedding;
+};
+
+const updateCollectionEmbeddingDimension = (collectionId, dimension) => {
+  if (!collectionId || !Number.isInteger(dimension) || dimension < 1) return;
+
+  collectionEmbeddingDimensions.value = {
+    ...collectionEmbeddingDimensions.value,
+    [collectionId]: dimension,
+  };
+};
+
+const resolveCollectionEmbeddingDimension = async () => {
+  if (!currentCollection.value) return null;
+
+  const cachedDimension =
+    collectionEmbeddingDimensions.value[currentCollection.value.id] ?? null;
+
+  if (cachedDimension) {
+    return cachedDimension;
+  }
+
+  const cachedVector = Object.values(embeddingVectorCache.value).find(
+    (value) => Array.isArray(value) && value.length,
+  );
+
+  if (Array.isArray(cachedVector) && cachedVector.length) {
+    updateCollectionEmbeddingDimension(
+      currentCollection.value.id,
+      cachedVector.length,
+    );
+    return cachedVector.length;
+  }
+
+  const sampleIds = currentCollectionData.value
+    .slice(0, 8)
+    .map((row) => row.id)
+    .filter(Boolean);
+
+  if (!sampleIds.length || isResolvingCollectionEmbeddingDimension.value) {
+    return null;
+  }
+
+  isResolvingCollectionEmbeddingDimension.value = true;
+
+  try {
+    const response = await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/get`,
+      {
+        ids: sampleIds,
+        include: ["embeddings"],
+      },
+    );
+
+    const detectedDimensions = (response.data?.embeddings ?? [])
+      .filter((embedding) => Array.isArray(embedding) && embedding.length)
+      .map((embedding) => embedding.length);
+
+    if (!detectedDimensions.length) {
+      return null;
+    }
+
+    const dimensionCounts = detectedDimensions.reduce((counts, dimension) => {
+      counts[dimension] = (counts[dimension] ?? 0) + 1;
+      return counts;
+    }, {});
+    const resolvedDimension = Number(
+      Object.entries(dimensionCounts).sort((leftEntry, rightEntry) => {
+        if (rightEntry[1] !== leftEntry[1]) {
+          return rightEntry[1] - leftEntry[1];
+        }
+
+        return Number(leftEntry[0]) - Number(rightEntry[0]);
+      })[0]?.[0] ?? 0,
+    );
+
+    if (resolvedDimension > 0) {
+      updateCollectionEmbeddingDimension(
+        currentCollection.value.id,
+        resolvedDimension,
+      );
+      return resolvedDimension;
+    }
+
+    return null;
+  } finally {
+    isResolvingCollectionEmbeddingDimension.value = false;
+  }
+};
+
+const generateOpenAiQueryEmbedding = async (queryValue, expectedDimension) => {
+  const apiKey = `${semanticQueryApiKey.value ?? ""}`.trim();
+  if (!apiKey) {
+    throw new Error("Enter an OpenAI API key before running a semantic query.");
+  }
+
+  const model =
+    `${semanticQuerySettings.value.openaiModel ?? ""}`.trim() ||
+    "text-embedding-3-small";
+  const dimensions = parsePositiveInteger(
+    semanticQuerySettings.value.openaiDimensions,
+    "OpenAI dimensions",
+  );
+  const response = await axios.post(
+    buildOpenAiEmbeddingsUrl(semanticQuerySettings.value.openaiBaseUrl),
+    {
+      model,
+      input: queryValue,
+      ...(dimensions ? { dimensions } : {}),
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    },
+  );
+
+  const embedding = ensureEmbeddingVector(
+    response.data?.data?.[0]?.embedding,
+    "OpenAI did not return a usable embedding vector.",
+  );
+
+  if (expectedDimension && embedding.length !== expectedDimension) {
+    throw new Error(
+      `Embedding dimension mismatch. The active collection expects ${expectedDimension} values, but ${model} returned ${embedding.length}.`,
+    );
+  }
+
+  return {
+    embedding,
+    provider: "openai",
+    providerLabel: "OpenAI",
+    providerModel: model,
+  };
+};
+
+const generateOllamaQueryEmbedding = async (queryValue, expectedDimension) => {
+  const model =
+    `${semanticQuerySettings.value.ollamaModel ?? ""}`.trim() ||
+    "nomic-embed-text";
+  const response = await axios.post(
+    buildOllamaEmbedUrl(semanticQuerySettings.value.ollamaBaseUrl),
+    {
+      model,
+      input: queryValue,
+    },
+  );
+
+  const embedding = ensureEmbeddingVector(
+    response.data?.embeddings?.[0] ?? response.data?.embedding,
+    "Ollama did not return a usable embedding vector.",
+  );
+
+  if (expectedDimension && embedding.length !== expectedDimension) {
+    throw new Error(
+      `Embedding dimension mismatch. The active collection expects ${expectedDimension} values, but ${model} returned ${embedding.length}.`,
+    );
+  }
+
+  return {
+    embedding,
+    provider: "ollama",
+    providerLabel: "Ollama",
+    providerModel: model,
+  };
+};
+
+const generateSemanticQueryEmbedding = async (queryValue) => {
+  const expectedDimension = await resolveCollectionEmbeddingDimension();
+
+  if (semanticQuerySettings.value.provider === "ollama") {
+    return generateOllamaQueryEmbedding(queryValue, expectedDimension);
+  }
+
+  return generateOpenAiQueryEmbedding(queryValue, expectedDimension);
+};
+
+const executeVectorQuery = async (embedding, resultCount, matchType) => {
+  if (!currentCollection.value) return;
+
+  const response = await axios.post(
+    `${collectionBaseUrl.value}/${currentCollection.value.id}/query`,
+    {
+      query_embeddings: [embedding],
+      n_results: resultCount,
+      include: ["documents", "metadatas", "distances"],
+    },
+  );
+
+  const ids = response.data?.ids?.[0] ?? [];
+  const documents = response.data?.documents?.[0] ?? [];
+  const metadatas = response.data?.metadatas?.[0] ?? [];
+  const distances = response.data?.distances?.[0] ?? [];
+
+  queryResults.value = ids.map((id, index) => ({
+    id,
+    document: documents[index] ?? "",
+    metadata: safeStringify(metadatas[index], true),
+    distance: distances[index],
+    matchType,
+  }));
+};
+
 const appendQueryHistoryEntry = (entry) => {
   const nextHistory = [
     entry,
@@ -1282,11 +1677,31 @@ const clearCurrentCollectionQueryHistory = () => {
 };
 
 const applyQueryHistoryEntry = (entry) => {
-  queryMode.value = entry.mode;
+  queryMode.value = entry.mode === "embedding" ? "embedding" : "semantic";
   queryResultCount.value = entry.resultCount;
-  queryText.value = entry.mode === "text" ? entry.value : "";
+  queryText.value = entry.mode === "embedding" ? "" : entry.value;
   queryEmbedding.value = entry.mode === "embedding" ? entry.value : "";
   lastQuerySummary.value = entry.summary;
+
+  if (entry.mode === "embedding") {
+    return;
+  }
+
+  if (entry.provider === "ollama") {
+    semanticQuerySettings.value = {
+      ...semanticQuerySettings.value,
+      provider: "ollama",
+      ollamaModel:
+        entry.providerModel || semanticQuerySettings.value.ollamaModel,
+    };
+    return;
+  }
+
+  semanticQuerySettings.value = {
+    ...semanticQuerySettings.value,
+    provider: "openai",
+    openaiModel: entry.providerModel || semanticQuerySettings.value.openaiModel,
+  };
 };
 
 const rerunQueryHistoryEntry = async (entry) => {
@@ -1727,7 +2142,7 @@ const saveEmbedding = async (id) => {
   }
 };
 
-const runCollectionQuery = async () => {
+const legacyRunCollectionQuery = async () => {
   if (!currentCollection.value || isQueryingCollection.value) return;
 
   const resultCount = Math.max(1, Number(queryResultCount.value) || 5);
@@ -1864,6 +2279,117 @@ const runCollectionQuery = async () => {
   }
 };
 
+const runCollectionQuery = async () => {
+  if (!currentCollection.value || isQueryingCollection.value) return;
+
+  const resultCount = Math.max(1, Number(queryResultCount.value) || 5);
+  let historyEntry = null;
+
+  if (queryMode.value === "semantic" && !queryText.value.trim()) {
+    toast.add({
+      severity: "error",
+      summary: "Missing semantic query",
+      detail: "Enter text before running a semantic search.",
+      life: 4000,
+    });
+    return;
+  }
+
+  if (queryMode.value === "embedding") {
+    try {
+      parseQueryEmbedding(queryEmbedding.value);
+    } catch (error) {
+      toast.add({
+        severity: "error",
+        summary: "Invalid query embedding",
+        detail: error.message,
+        life: 5000,
+      });
+      return;
+    }
+  }
+
+  isQueryingCollection.value = true;
+
+  try {
+    if (queryMode.value === "semantic") {
+      const trimmedQueryText = queryText.value.trim();
+      const generatedQuery =
+        await generateSemanticQueryEmbedding(trimmedQueryText);
+
+      lastQuerySummary.value = `Semantic query - ${generatedQuery.providerLabel} - ${generatedQuery.providerModel} - ${formatNumber(generatedQuery.embedding.length)} dims`;
+      historyEntry = {
+        id: `${currentCollection.value.id}:semantic:${generatedQuery.provider}:${generatedQuery.providerModel}:${trimmedQueryText.toLowerCase()}:${resultCount}`,
+        collectionId: currentCollection.value.id,
+        collectionName: currentCollection.value.name,
+        mode: "semantic",
+        value: trimmedQueryText,
+        preview: truncateText(trimmedQueryText, 72),
+        provider: generatedQuery.provider,
+        providerModel: generatedQuery.providerModel,
+        resultCount,
+        summary: lastQuerySummary.value,
+        timestamp: new Date().toISOString(),
+      };
+
+      await executeVectorQuery(
+        generatedQuery.embedding,
+        resultCount,
+        "semantic",
+      );
+      updateCollectionEmbeddingDimension(
+        currentCollection.value.id,
+        generatedQuery.embedding.length,
+      );
+    } else {
+      const parsedEmbedding = parseQueryEmbedding(queryEmbedding.value);
+
+      lastQuerySummary.value = `Embedding query - ${formatNumber(parsedEmbedding.length)} dims`;
+      historyEntry = {
+        id: `${currentCollection.value.id}:embedding:${safeStringify(parsedEmbedding)}:${resultCount}`,
+        collectionId: currentCollection.value.id,
+        collectionName: currentCollection.value.name,
+        mode: "embedding",
+        value: JSON.stringify(parsedEmbedding),
+        preview: `${formatNumber(parsedEmbedding.length)} dims - ${truncateText(
+          parsedEmbedding
+            .slice(0, 4)
+            .map((value) => formatEmbeddingNumber(value))
+            .join(", "),
+          48,
+        )}`,
+        resultCount,
+        summary: lastQuerySummary.value,
+        timestamp: new Date().toISOString(),
+      };
+
+      await executeVectorQuery(parsedEmbedding, resultCount, "embedding");
+      updateCollectionEmbeddingDimension(
+        currentCollection.value.id,
+        parsedEmbedding.length,
+      );
+    }
+
+    hasCompletedQuery.value = true;
+
+    if (historyEntry) {
+      appendQueryHistoryEntry(historyEntry);
+    }
+  } catch (error) {
+    queryResults.value = [];
+    hasCompletedQuery.value = false;
+
+    toast.add({
+      severity: "error",
+      summary: "Query failed",
+      detail: getErrorMessage(error),
+      life: 5000,
+    });
+  } finally {
+    isQueryingCollection.value = false;
+  }
+};
+
 const focusQueryResult = (id) => {
   clearMetadataFilters();
   hideMetadataFilterOverlayPanel();
@@ -1928,6 +2454,7 @@ const handleDisconnect = () => {
   collections.value = [];
   currentCollection.value = null;
   currentCollectionData.value = [];
+  collectionEmbeddingDimensions.value = {};
   resetTableFilters();
   collectionSearch.value = "";
   mobileSidebarOpen.value = false;
@@ -2215,6 +2742,7 @@ const handleCollectionDeletion = () => {
         if (selectedCollection.value.id === currentCollection.value?.id) {
           currentCollection.value = null;
           currentCollectionData.value = [];
+          collectionEmbeddingDimensions.value = {};
           resetTableFilters();
           resetEmbeddingViews();
           queryResults.value = [];
@@ -2948,7 +3476,9 @@ const exportCSV = async (includeEmbeddings = false) => {
                 <span class="workspace-query-cta__copy">
                   <small>Semantic search</small>
                   <strong>Open Query Viewer</strong>
-                  <span> Search this collection by text or embedding </span>
+                  <span>
+                    Turn text into embeddings or query with a raw vector.
+                  </span>
                 </span>
               </button>
 
@@ -3919,8 +4449,8 @@ const exportCSV = async (includeEmbeddings = false) => {
           <div class="panel-heading">
             <div>
               <p class="query-panel__copy">
-                Run a full-text document search or paste an embedding vector to
-                retrieve nearest matches from the active collection.
+                Enter query text or a JSON embedding to find the most similar
+                records in the current collection.
               </p>
             </div>
 
@@ -3939,12 +4469,12 @@ const exportCSV = async (includeEmbeddings = false) => {
             <button
               class="query-mode-switch__button"
               :class="{
-                'query-mode-switch__button--active': queryMode === 'text',
+                'query-mode-switch__button--active': queryMode === 'semantic',
               }"
               type="button"
-              @click="queryMode = 'text'"
+              @click="queryMode = 'semantic'"
             >
-              Text search
+              Semantic text
             </button>
 
             <button
@@ -3958,15 +4488,21 @@ const exportCSV = async (includeEmbeddings = false) => {
               Embedding JSON
             </button>
           </div>
+          <p class="query-panel__hint">
+            Semantic text mode always generates an embedding first. Embedding
+            JSON mode skips that step and queries Chroma directly.
+          </p>
 
           <label class="field">
             <span class="field__label">
-              {{ queryMode === "text" ? "Search text" : "Query embedding" }}
+              {{
+                queryMode === "semantic" ? "Semantic query" : "Query embedding"
+              }}
             </span>
             <span class="field__hint">
               {{
-                queryMode === "text"
-                  ? "This mode matches documents using Chroma's document contains filter."
+                queryMode === "semantic"
+                  ? "This mode embeds your text first using the selected embedding provider."
                   : "Paste a JSON array of numbers to query with a vector directly."
               }}
             </span>
@@ -3982,9 +4518,166 @@ const exportCSV = async (includeEmbeddings = false) => {
               v-else
               v-model="queryText"
               rows="4"
-              placeholder="Find records about semantic search and vector databases"
+              placeholder="Enter your query text here"
             ></textarea>
           </label>
+
+          <section
+            v-if="queryMode === 'semantic'"
+            class="semantic-provider-card"
+          >
+            <div class="semantic-provider-card__header">
+              <div>
+                <p class="section-kicker">Embedding provider</p>
+                <h3>{{ semanticProviderLabel }}</h3>
+                <p class="semantic-provider-card__copy">
+                  Semantic search works best when the provider model matches the
+                  one that created this collection's embeddings.
+                </p>
+              </div>
+            </div>
+
+            <div class="semantic-provider-card__status">
+              <span class="tag-chip semantic-provider-card__status-chip">
+                <i
+                  :class="
+                    isResolvingCollectionEmbeddingDimension
+                      ? 'pi pi-spin pi-spinner'
+                      : 'pi pi-sparkles'
+                  "
+                ></i>
+                <span>{{ semanticProviderDimensionLabel }}</span>
+              </span>
+
+              <p class="semantic-provider-card__status-copy">
+                {{ semanticProviderDimensionNote }}
+              </p>
+            </div>
+
+            <div class="semantic-provider-card__surface">
+              <div class="query-mode-switch semantic-provider-switch">
+                <button
+                  class="query-mode-switch__button"
+                  :class="{
+                    'query-mode-switch__button--active':
+                      semanticQuerySettings.provider === 'openai',
+                  }"
+                  type="button"
+                  @click="
+                    semanticQuerySettings = {
+                      ...semanticQuerySettings,
+                      provider: 'openai',
+                    }
+                  "
+                >
+                  OpenAI
+                </button>
+
+                <button
+                  class="query-mode-switch__button"
+                  :class="{
+                    'query-mode-switch__button--active':
+                      semanticQuerySettings.provider === 'ollama',
+                  }"
+                  type="button"
+                  @click="
+                    semanticQuerySettings = {
+                      ...semanticQuerySettings,
+                      provider: 'ollama',
+                    }
+                  "
+                >
+                  Ollama
+                </button>
+              </div>
+
+              <div
+                v-if="semanticQuerySettings.provider === 'openai'"
+                class="semantic-provider-grid"
+              >
+                <label class="field">
+                  <span class="field__label">OpenAI API key</span>
+                  <span class="field__hint">
+                    Kept only in this session and not written into local browser
+                    storage.
+                  </span>
+                  <input
+                    v-model="semanticQueryApiKey"
+                    type="password"
+                    placeholder="sk-..."
+                    autocomplete="off"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">OpenAI model</span>
+                  <input
+                    v-model="semanticQuerySettings.openaiModel"
+                    type="text"
+                    placeholder="text-embedding-3-small"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">Base URL</span>
+                  <span class="field__hint">
+                    Default: <code>https://api.openai.com/v1</code>
+                  </span>
+                  <input
+                    v-model="semanticQuerySettings.openaiBaseUrl"
+                    type="text"
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">Dimensions</span>
+                  <span class="field__hint">
+                    Optional. Set this to the detected collection size when you
+                    need a shorter vector.
+                  </span>
+                  <input
+                    v-model="semanticQuerySettings.openaiDimensions"
+                    type="number"
+                    min="1"
+                    :placeholder="
+                      currentCollectionEmbeddingDimension
+                        ? `${currentCollectionEmbeddingDimension}`
+                        : '1536'
+                    "
+                  />
+                </label>
+              </div>
+
+              <div v-else class="semantic-provider-grid">
+                <label class="field">
+                  <span class="field__label">Ollama model</span>
+                  <input
+                    v-model="semanticQuerySettings.ollamaModel"
+                    type="text"
+                    placeholder="nomic-embed-text"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">Ollama URL</span>
+                  <span class="field__hint">
+                    Default: <code>http://localhost:11434</code>
+                  </span>
+                  <input
+                    v-model="semanticQuerySettings.ollamaBaseUrl"
+                    type="text"
+                    placeholder="http://localhost:11434"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <p class="query-panel__hint">
+              Current provider: {{ semanticProviderLabel }} /
+              {{ semanticProviderModelLabel }}
+            </p>
+          </section>
 
           <div class="query-panel__controls">
             <label class="field field--compact query-panel__count">
@@ -4013,11 +4706,6 @@ const exportCSV = async (includeEmbeddings = false) => {
               <span>Run query</span>
             </button>
           </div>
-
-          <p class="query-panel__hint">
-            Text mode performs document substring search. Use embedding JSON
-            mode for nearest-neighbor vector search.
-          </p>
         </section>
 
         <section class="query-history query-panel__history-section">
@@ -4054,7 +4742,11 @@ const exportCSV = async (includeEmbeddings = false) => {
             >
               <div class="query-history-card__top">
                 <span class="query-history-card__mode">
-                  {{ entry.mode === "text" ? "Text search" : "Embedding" }}
+                  {{
+                    entry.mode === "embedding"
+                      ? "Embedding JSON"
+                      : "Semantic text"
+                  }}
                 </span>
                 <span class="query-history-card__time">
                   {{ formatQueryHistoryTimestamp(entry.timestamp) }}
