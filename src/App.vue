@@ -77,6 +77,8 @@ const collectionSearch = ref("");
 const showQueryViewer = ref(false);
 const showImportViewer = ref(false);
 const showMetricsViewer = ref(false);
+const showImportAutoEmbedSettings = ref(false);
+const showCreateRecordAutoEmbedSettings = ref(false);
 const metadataFilterMode = ref("all");
 const metadataFilterRules = ref([]);
 const metadataFilterFocusedRuleId = ref(null);
@@ -194,11 +196,13 @@ const createEmptyRecordDraft = () => ({
 
 const resetCreateRecordState = () => {
   showCreateRecordForm.value = false;
+  showCreateRecordAutoEmbedSettings.value = false;
   createRecordData.value = createEmptyRecordDraft();
 };
 
 const resetImportState = () => {
   showImportViewer.value = false;
+  showImportAutoEmbedSettings.value = false;
   importMode.value = "upsert";
   importPayload.value = "";
   importFileName.value = "";
@@ -740,8 +744,10 @@ const semanticProviderLabel = computed(() => {
 
 const semanticProviderModelLabel = computed(() => {
   return semanticQuerySettings.value.provider === "ollama"
-    ? semanticQuerySettings.value.ollamaModel
-    : semanticQuerySettings.value.openaiModel;
+    ? `${semanticQuerySettings.value.ollamaModel ?? ""}`.trim() ||
+        "embeddinggemma"
+    : `${semanticQuerySettings.value.openaiModel ?? ""}`.trim() ||
+        "text-embedding-3-small";
 });
 
 const semanticProviderDimensionLabel = computed(() => {
@@ -1007,7 +1013,7 @@ const normalizeSemanticQuerySettings = (value) => ({
     `${value?.ollamaBaseUrl ?? "http://localhost:11434"}`.trim() ||
     "http://localhost:11434",
   ollamaModel:
-    `${value?.ollamaModel ?? "nomic-embed-text"}`.trim() || "nomic-embed-text",
+    `${value?.ollamaModel ?? "embeddinggemma"}`.trim() || "embeddinggemma",
 });
 
 const storeSemanticQuerySettings = (value) => {
@@ -1045,28 +1051,42 @@ watch(
 watch(
   [
     showQueryViewer,
+    showImportViewer,
+    showCreateRecordForm,
     queryMode,
     () => currentCollection.value?.id ?? null,
     () => currentCollectionData.value.length,
   ],
   async ([
     isQueryViewerOpen,
+    isImportViewerOpen,
+    isCreateRecordViewerOpen,
     activeQueryMode,
     activeCollectionId,
     loadedRows,
   ]) => {
     if (
-      !isQueryViewerOpen ||
-      activeQueryMode !== "semantic" ||
-      !activeCollectionId ||
-      !loadedRows
+      (!isQueryViewerOpen || activeQueryMode !== "semantic") &&
+      !isImportViewerOpen &&
+      !isCreateRecordViewerOpen
     ) {
+      return;
+    }
+
+    if (!activeCollectionId || !loadedRows) {
       return;
     }
 
     await resolveCollectionEmbeddingDimension();
   },
 );
+
+const setSemanticProvider = (provider) => {
+  semanticQuerySettings.value = {
+    ...semanticQuerySettings.value,
+    provider,
+  };
+};
 
 const initializeTenantAndDatabase = async () => {
   await Promise.all([
@@ -1543,10 +1563,14 @@ const resolveCollectionEmbeddingDimension = async () => {
   }
 };
 
-const generateOpenAiQueryEmbedding = async (queryValue, expectedDimension) => {
+const generateOpenAiQueryEmbedding = async (
+  queryValue,
+  expectedDimension,
+  usageLabel = "running a semantic query",
+) => {
   const apiKey = `${semanticQueryApiKey.value ?? ""}`.trim();
   if (!apiKey) {
-    throw new Error("Enter an OpenAI API key before running a semantic query.");
+    throw new Error(`Enter an OpenAI API key before ${usageLabel}.`);
   }
 
   const model =
@@ -1556,12 +1580,13 @@ const generateOpenAiQueryEmbedding = async (queryValue, expectedDimension) => {
     semanticQuerySettings.value.openaiDimensions,
     "OpenAI dimensions",
   );
+  const requestedDimensions = dimensions ?? expectedDimension ?? null;
   const response = await axios.post(
     buildOpenAiEmbeddingsUrl(semanticQuerySettings.value.openaiBaseUrl),
     {
       model,
       input: queryValue,
-      ...(dimensions ? { dimensions } : {}),
+      ...(requestedDimensions ? { dimensions: requestedDimensions } : {}),
     },
     {
       headers: {
@@ -1592,7 +1617,7 @@ const generateOpenAiQueryEmbedding = async (queryValue, expectedDimension) => {
 const generateOllamaQueryEmbedding = async (queryValue, expectedDimension) => {
   const model =
     `${semanticQuerySettings.value.ollamaModel ?? ""}`.trim() ||
-    "nomic-embed-text";
+    "embeddinggemma";
   const response = await axios.post(
     buildOllamaEmbedUrl(semanticQuerySettings.value.ollamaBaseUrl),
     {
@@ -1621,13 +1646,115 @@ const generateOllamaQueryEmbedding = async (queryValue, expectedDimension) => {
 };
 
 const generateSemanticQueryEmbedding = async (queryValue) => {
-  const expectedDimension = await resolveCollectionEmbeddingDimension();
+  return generateSemanticEmbedding(queryValue, {
+    usageLabel: "running a semantic query",
+  });
+};
 
-  if (semanticQuerySettings.value.provider === "ollama") {
-    return generateOllamaQueryEmbedding(queryValue, expectedDimension);
+const generateSemanticEmbedding = async (
+  inputValue,
+  { expectedDimension = undefined, usageLabel = "generating embeddings" } = {},
+) => {
+  const normalizedInput = `${inputValue ?? ""}`.trim();
+
+  if (!normalizedInput) {
+    throw new Error("Embedding source text cannot be empty.");
   }
 
-  return generateOpenAiQueryEmbedding(queryValue, expectedDimension);
+  const resolvedExpectedDimension =
+    expectedDimension === undefined
+      ? await resolveCollectionEmbeddingDimension()
+      : expectedDimension;
+
+  if (semanticQuerySettings.value.provider === "ollama") {
+    return generateOllamaQueryEmbedding(
+      normalizedInput,
+      resolvedExpectedDimension ?? null,
+    );
+  }
+
+  return generateOpenAiQueryEmbedding(
+    normalizedInput,
+    resolvedExpectedDimension ?? null,
+    usageLabel,
+  );
+};
+
+const ensureRecordsHaveEmbeddings = async (
+  records,
+  usageLabel = "generating embeddings",
+) => {
+  if (!Array.isArray(records) || !records.length) {
+    return {
+      records: [],
+      generatedCount: 0,
+    };
+  }
+
+  let expectedDimension = await resolveCollectionEmbeddingDimension();
+  let generatedCount = 0;
+  const recordsWithEmbeddings = [];
+
+  for (let recordIndex = 0; recordIndex < records.length; recordIndex += 1) {
+    const record = records[recordIndex];
+    const recordLabel = `Record ${recordIndex + 1}`;
+
+    if (hasRecordField(record, "embedding")) {
+      const validatedEmbedding = ensureEmbeddingVector(
+        record.embedding,
+        `${recordLabel} has an invalid embedding vector.`,
+      );
+
+      if (
+        expectedDimension !== null &&
+        expectedDimension !== undefined &&
+        validatedEmbedding.length !== expectedDimension
+      ) {
+        throw new Error(
+          `${recordLabel} embedding dimension mismatch. Expected ${expectedDimension} values but received ${validatedEmbedding.length}.`,
+        );
+      }
+
+      expectedDimension ??= validatedEmbedding.length;
+      recordsWithEmbeddings.push({
+        ...record,
+        embedding: validatedEmbedding,
+      });
+      continue;
+    }
+
+    const sourceDocument = `${record.document ?? ""}`.trim();
+
+    if (!sourceDocument) {
+      throw new Error(
+        `Record needs either an embedding or a non-empty document for auto-embedding.`,
+      );
+    }
+
+    const generatedEmbedding = await generateSemanticEmbedding(sourceDocument, {
+      expectedDimension,
+      usageLabel,
+    });
+
+    expectedDimension ??= generatedEmbedding.embedding.length;
+    generatedCount += 1;
+    recordsWithEmbeddings.push({
+      ...record,
+      embedding: generatedEmbedding.embedding,
+    });
+  }
+
+  if (currentCollection.value && expectedDimension) {
+    updateCollectionEmbeddingDimension(
+      currentCollection.value.id,
+      expectedDimension,
+    );
+  }
+
+  return {
+    records: recordsWithEmbeddings,
+    generatedCount,
+  };
 };
 
 const executeVectorQuery = async (embedding, resultCount, matchType) => {
@@ -1891,9 +2018,12 @@ const parseImportRecords = (value) => {
       normalizedRecord.metadata = record.metadata;
     }
 
-    if (!hasRecordField(normalizedRecord, "embedding")) {
+    if (
+      !hasRecordField(normalizedRecord, "embedding") &&
+      `${normalizedRecord.document ?? ""}`.trim().length === 0
+    ) {
       throw new Error(
-        `Record ${rowNumber} is missing an embedding. This importer currently requires explicit embeddings for every record.`,
+        `Record ${rowNumber} needs either an embedding or a non-empty document for auto-embedding.`,
       );
     }
 
@@ -1944,6 +2074,8 @@ const handleImportRecords = async () => {
   if (!currentCollection.value || isImportingRecords.value) return;
 
   let parsedRecords;
+  let recordsWithEmbeddings;
+  let generatedEmbeddingCount = 0;
 
   try {
     parsedRecords = parseImportRecords(importPayload.value);
@@ -1957,41 +2089,44 @@ const handleImportRecords = async () => {
     return;
   }
 
-  const payloadGroups = buildImportPayloadGroups(parsedRecords);
-  const activeCollectionId = currentCollection.value.id;
-  const isAddOnly = importMode.value === "add";
-  const endpoint = isAddOnly ? "add" : "upsert";
-  const successVerb = isAddOnly ? "Added" : "Upserted";
-  const recordsWithEmbeddings = parsedRecords.filter((record) =>
-    hasRecordField(record, "embedding"),
-  ).length;
-
-  if (isAddOnly) {
-    const existingIds = new Set(
-      currentCollectionData.value.map((record) => record.id),
-    );
-    const duplicateIds = parsedRecords
-      .map((record) => record.id)
-      .filter((id) => existingIds.has(id));
-
-    if (duplicateIds.length) {
-      const previewIds = duplicateIds.slice(0, 3).join(", ");
-      const remainingCount =
-        duplicateIds.length - Math.min(duplicateIds.length, 3);
-
-      toast.add({
-        severity: "error",
-        summary: "Duplicate record IDs",
-        detail: `Add only cannot import records that already exist. Duplicate IDs: ${previewIds}${remainingCount > 0 ? ` and ${remainingCount} more` : ""}. Use Upsert if you want to overwrite existing rows.`,
-        life: 7000,
-      });
-      return;
-    }
-  }
-
   isImportingRecords.value = true;
 
   try {
+    const preparedRecords = await ensureRecordsHaveEmbeddings(
+      parsedRecords,
+      "auto-embedding documents during import",
+    );
+    recordsWithEmbeddings = preparedRecords.records;
+    generatedEmbeddingCount = preparedRecords.generatedCount;
+    const payloadGroups = buildImportPayloadGroups(recordsWithEmbeddings);
+    const activeCollectionId = currentCollection.value.id;
+    const isAddOnly = importMode.value === "add";
+    const endpoint = isAddOnly ? "add" : "upsert";
+    const successVerb = isAddOnly ? "Added" : "Upserted";
+
+    if (isAddOnly) {
+      const existingIds = new Set(
+        currentCollectionData.value.map((record) => record.id),
+      );
+      const duplicateIds = recordsWithEmbeddings
+        .map((record) => record.id)
+        .filter((id) => existingIds.has(id));
+
+      if (duplicateIds.length) {
+        const previewIds = duplicateIds.slice(0, 3).join(", ");
+        const remainingCount =
+          duplicateIds.length - Math.min(duplicateIds.length, 3);
+
+        toast.add({
+          severity: "error",
+          summary: "Duplicate record IDs",
+          detail: `Add only cannot import records that already exist. Duplicate IDs: ${previewIds}${remainingCount > 0 ? ` and ${remainingCount} more` : ""}. Use Upsert if you want to overwrite existing rows.`,
+          life: 7000,
+        });
+        return;
+      }
+    }
+
     for (const payloadGroup of payloadGroups) {
       await axios.post(
         `${collectionBaseUrl.value}/${activeCollectionId}/${endpoint}`,
@@ -2002,7 +2137,7 @@ const handleImportRecords = async () => {
     toast.add({
       severity: "success",
       summary: "Import complete",
-      detail: `${successVerb} ${formatNumber(parsedRecords.length)} records.`,
+      detail: `${successVerb} ${formatNumber(recordsWithEmbeddings.length)} records${generatedEmbeddingCount ? ` with ${formatNumber(generatedEmbeddingCount)} auto-generated embedding${generatedEmbeddingCount === 1 ? "" : "s"}` : ""}.`,
       life: 5000,
     });
 
@@ -2015,8 +2150,12 @@ const handleImportRecords = async () => {
   } catch (error) {
     toast.add({
       severity: "error",
-      summary: "Import failed",
-      detail: `Unable to import records. Reason: ${getErrorMessage(error)}`,
+      summary: recordsWithEmbeddings
+        ? "Import failed"
+        : "Import preparation failed",
+      detail: recordsWithEmbeddings
+        ? `Unable to import records. Reason: ${getErrorMessage(error)}`
+        : error.message,
       life: 6000,
     });
   } finally {
@@ -2481,9 +2620,9 @@ const handleCreateRecord = async () => {
   const trimmedId = `${createRecordData.value.id ?? ""}`.trim();
   const documentValue = `${createRecordData.value.document ?? ""}`;
   const normalizedDocument = documentValue.trim() ? documentValue : "";
+  const trimmedEmbedding = `${createRecordData.value.embedding ?? ""}`.trim();
   const trimmedMetadata = `${createRecordData.value.metadata ?? ""}`.trim();
   let metadata = null;
-  let parsedEmbedding;
 
   if (!trimmedId) {
     toast.add({
@@ -2500,18 +2639,6 @@ const handleCreateRecord = async () => {
       severity: "error",
       summary: "Duplicate record ID",
       detail: `${trimmedId} already exists in the current collection.`,
-      life: 5000,
-    });
-    return;
-  }
-
-  try {
-    parsedEmbedding = parseEmbeddingDraft(createRecordData.value.embedding);
-  } catch (error) {
-    toast.add({
-      severity: "error",
-      summary: "Invalid embedding",
-      detail: error.message,
       life: 5000,
     });
     return;
@@ -2547,11 +2674,30 @@ const handleCreateRecord = async () => {
   isCreatingRecord.value = true;
 
   try {
+    const recordDraft = {
+      id: trimmedId,
+      document: normalizedDocument,
+      ...(trimmedMetadata ? { metadata } : {}),
+    };
+
+    if (trimmedEmbedding) {
+      recordDraft.embedding = parseEmbeddingDraft(
+        createRecordData.value.embedding,
+      );
+    }
+
+    const preparedRecords = await ensureRecordsHaveEmbeddings(
+      [recordDraft],
+      "auto-embedding this record",
+    );
+    const preparedRecord = preparedRecords.records[0];
+    const wasAutoEmbedded = preparedRecords.generatedCount > 0;
+
     await axios.post(
       `${collectionBaseUrl.value}/${currentCollection.value.id}/add`,
       {
         ids: [trimmedId],
-        embeddings: [parsedEmbedding],
+        embeddings: [preparedRecord.embedding],
         documents: normalizedDocument ? [normalizedDocument] : null,
         metadatas: trimmedMetadata ? [metadata] : null,
         uris: null,
@@ -2570,7 +2716,7 @@ const handleCreateRecord = async () => {
     toast.add({
       severity: "success",
       summary: "Record created",
-      detail: `${trimmedId} was added to ${currentCollection.value.name}.`,
+      detail: `${trimmedId} was added to ${currentCollection.value.name}${wasAutoEmbedded ? ` with an auto-generated embedding from ${semanticProviderLabel.value}.` : "."}`,
       life: 4000,
     });
 
@@ -4122,8 +4268,9 @@ const exportCSV = async (includeEmbeddings = false) => {
         <div>
           <p class="import-panel__copy">
             Paste a JSON array or a single JSON object. Each record needs an
-            <b>id</b> and an <b>embedding</b>. <b>document</b> and
-            <b>metadata</b> are optional.
+            <b>id</b> plus either an <b>embedding</b> or a non-empty
+            <b>document</b>. Missing embeddings can be generated from document
+            text. <b>metadata</b> is optional.
           </p>
         </div>
 
@@ -4211,10 +4358,185 @@ const exportCSV = async (includeEmbeddings = false) => {
           <div class="import-panel__note">
             <i class="pi pi-info-circle"></i>
             <span>
-              Embeddings are required and must match the selected collection's
+              Missing embeddings are generated with
+              <code>{{ semanticProviderLabel }}</code> using
+              <code>{{ semanticProviderModelLabel }}</code>
+              . All vectors still need to match the selected collection's
               dimension size.
             </span>
           </div>
+
+          <section class="semantic-provider-card">
+            <div class="semantic-provider-card__header">
+              <div>
+                <p class="section-kicker">Auto-embed provider</p>
+                <h3>{{ semanticProviderLabel }}</h3>
+                <p class="semantic-provider-card__copy">
+                  Records without an embedding use this provider to generate
+                  vectors during import.
+                </p>
+              </div>
+
+              <button
+                class="mini-button mini-button--ghost semantic-provider-card__toggle"
+                type="button"
+                :aria-expanded="showImportAutoEmbedSettings"
+                @click="
+                  showImportAutoEmbedSettings = !showImportAutoEmbedSettings
+                "
+              >
+                <span>{{
+                  showImportAutoEmbedSettings
+                    ? "Hide settings"
+                    : "Show settings"
+                }}</span>
+                <i
+                  :class="
+                    showImportAutoEmbedSettings
+                      ? 'pi pi-angle-up'
+                      : 'pi pi-angle-down'
+                  "
+                ></i>
+              </button>
+            </div>
+
+            <div
+              v-if="showImportAutoEmbedSettings"
+              class="semantic-provider-card__status"
+            >
+              <span class="tag-chip semantic-provider-card__status-chip">
+                <i
+                  :class="
+                    isResolvingCollectionEmbeddingDimension
+                      ? 'pi pi-spin pi-spinner'
+                      : 'pi pi-sparkles'
+                  "
+                ></i>
+                <span>{{ semanticProviderDimensionLabel }}</span>
+              </span>
+
+              <p class="semantic-provider-card__status-copy">
+                {{ semanticProviderDimensionNote }}
+              </p>
+            </div>
+
+            <div
+              v-if="showImportAutoEmbedSettings"
+              class="semantic-provider-card__surface"
+            >
+              <div class="query-mode-switch semantic-provider-switch">
+                <button
+                  class="query-mode-switch__button"
+                  :class="{
+                    'query-mode-switch__button--active':
+                      semanticQuerySettings.provider === 'openai',
+                  }"
+                  type="button"
+                  @click="setSemanticProvider('openai')"
+                >
+                  OpenAI
+                </button>
+
+                <button
+                  class="query-mode-switch__button"
+                  :class="{
+                    'query-mode-switch__button--active':
+                      semanticQuerySettings.provider === 'ollama',
+                  }"
+                  type="button"
+                  @click="setSemanticProvider('ollama')"
+                >
+                  Ollama
+                </button>
+              </div>
+
+              <div
+                v-if="semanticQuerySettings.provider === 'openai'"
+                class="semantic-provider-grid"
+              >
+                <label class="field">
+                  <span class="field__label">OpenAI API key</span>
+                  <span class="field__hint">
+                    Kept only in this session and not written into local browser
+                    storage.
+                  </span>
+                  <input
+                    v-model="semanticQueryApiKey"
+                    type="password"
+                    placeholder="sk-..."
+                    autocomplete="off"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">OpenAI model</span>
+                  <input
+                    v-model="semanticQuerySettings.openaiModel"
+                    type="text"
+                    placeholder="text-embedding-3-small"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">Base URL</span>
+                  <span class="field__hint">
+                    Default: <code>https://api.openai.com/v1</code>
+                  </span>
+                  <input
+                    v-model="semanticQuerySettings.openaiBaseUrl"
+                    type="text"
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">Dimensions</span>
+                  <span class="field__hint">
+                    Optional. Set this to the detected collection size when you
+                    need a shorter vector.
+                  </span>
+                  <input
+                    v-model="semanticQuerySettings.openaiDimensions"
+                    type="number"
+                    min="1"
+                    :placeholder="
+                      currentCollectionEmbeddingDimension
+                        ? `${currentCollectionEmbeddingDimension}`
+                        : '1536'
+                    "
+                  />
+                </label>
+              </div>
+
+              <div v-else class="semantic-provider-grid">
+                <label class="field">
+                  <span class="field__label">Ollama model</span>
+                  <input
+                    v-model="semanticQuerySettings.ollamaModel"
+                    type="text"
+                    placeholder="embeddinggemma"
+                  />
+                </label>
+
+                <label class="field">
+                  <span class="field__label">Ollama URL</span>
+                  <span class="field__hint">
+                    Default: <code>http://localhost:11434</code>
+                  </span>
+                  <input
+                    v-model="semanticQuerySettings.ollamaBaseUrl"
+                    type="text"
+                    placeholder="http://localhost:11434"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <p v-if="showImportAutoEmbedSettings" class="query-panel__hint">
+              Current provider: {{ semanticProviderLabel }} /
+              {{ semanticProviderModelLabel }}
+            </p>
+          </section>
 
           <div class="import-source-card">
             <div class="import-source-card__copy">
@@ -4236,8 +4558,9 @@ const exportCSV = async (includeEmbeddings = false) => {
           <label class="field">
             <span class="field__label">Import payload</span>
             <span class="field__hint">
-              Supported fields: <code>id</code>, <code>embedding</code>,
-              optional <code>document</code>, optional <code>metadata</code>.
+              Supported fields: <code>id</code>, optional
+              <code>embedding</code>, optional <code>document</code> used for
+              auto-embedding, and optional <code>metadata</code>.
             </span>
             <textarea
               :value="importPayload"
@@ -4260,15 +4583,16 @@ const exportCSV = async (includeEmbeddings = false) => {
               <div class="import-guide-row">
                 <strong>embedding</strong>
                 <span
-                  >Required JSON array of finite numbers. Its dimension must
-                  match the collection.</span
+                  >Optional JSON array of finite numbers. If omitted, a
+                  non-empty document is used to generate the vector
+                  automatically.</span
                 >
               </div>
               <div class="import-guide-row">
                 <strong>document</strong>
                 <span
-                  >Optional text stored with the record alongside the
-                  embedding.</span
+                  >Optional text stored with the record. Required when you want
+                  the app to auto-generate the embedding.</span
                 >
               </div>
               <div class="import-guide-row">
@@ -4442,12 +4766,7 @@ const exportCSV = async (includeEmbeddings = false) => {
                       semanticQuerySettings.provider === 'openai',
                   }"
                   type="button"
-                  @click="
-                    semanticQuerySettings = {
-                      ...semanticQuerySettings,
-                      provider: 'openai',
-                    }
-                  "
+                  @click="setSemanticProvider('openai')"
                 >
                   OpenAI
                 </button>
@@ -4459,12 +4778,7 @@ const exportCSV = async (includeEmbeddings = false) => {
                       semanticQuerySettings.provider === 'ollama',
                   }"
                   type="button"
-                  @click="
-                    semanticQuerySettings = {
-                      ...semanticQuerySettings,
-                      provider: 'ollama',
-                    }
-                  "
+                  @click="setSemanticProvider('ollama')"
                 >
                   Ollama
                 </button>
@@ -4534,7 +4848,7 @@ const exportCSV = async (includeEmbeddings = false) => {
                   <input
                     v-model="semanticQuerySettings.ollamaModel"
                     type="text"
-                    placeholder="nomic-embed-text"
+                    placeholder="embeddinggemma"
                   />
                 </label>
 
@@ -4945,10 +5259,186 @@ const exportCSV = async (includeEmbeddings = false) => {
           }}
         </span>
         <p>
-          Add a single record with an embedding. The vector must match the
-          collection's dimension size.
+          Add a single record with either a pasted embedding or a document that
+          can be embedded automatically with
+          <code>{{ semanticProviderLabel }}</code> using
+          <code>{{ semanticProviderModelLabel }}</code
+          >.
         </p>
       </div>
+
+      <section class="semantic-provider-card">
+        <div class="semantic-provider-card__header">
+          <div>
+            <p class="section-kicker">Auto-embed provider</p>
+            <h3>{{ semanticProviderLabel }}</h3>
+            <p class="semantic-provider-card__copy">
+              Leave the embedding field empty to generate the vector from the
+              document text with this provider.
+            </p>
+          </div>
+
+          <button
+            class="mini-button mini-button--ghost semantic-provider-card__toggle"
+            type="button"
+            :aria-expanded="showCreateRecordAutoEmbedSettings"
+            @click="
+              showCreateRecordAutoEmbedSettings =
+                !showCreateRecordAutoEmbedSettings
+            "
+          >
+            <span>{{
+              showCreateRecordAutoEmbedSettings
+                ? "Hide settings"
+                : "Show settings"
+            }}</span>
+            <i
+              :class="
+                showCreateRecordAutoEmbedSettings
+                  ? 'pi pi-angle-up'
+                  : 'pi pi-angle-down'
+              "
+            ></i>
+          </button>
+        </div>
+
+        <div
+          v-if="showCreateRecordAutoEmbedSettings"
+          class="semantic-provider-card__status"
+        >
+          <span class="tag-chip semantic-provider-card__status-chip">
+            <i
+              :class="
+                isResolvingCollectionEmbeddingDimension
+                  ? 'pi pi-spin pi-spinner'
+                  : 'pi pi-sparkles'
+              "
+            ></i>
+            <span>{{ semanticProviderDimensionLabel }}</span>
+          </span>
+
+          <p class="semantic-provider-card__status-copy">
+            {{ semanticProviderDimensionNote }}
+          </p>
+        </div>
+
+        <div
+          v-if="showCreateRecordAutoEmbedSettings"
+          class="semantic-provider-card__surface"
+        >
+          <div class="query-mode-switch semantic-provider-switch">
+            <button
+              class="query-mode-switch__button"
+              :class="{
+                'query-mode-switch__button--active':
+                  semanticQuerySettings.provider === 'openai',
+              }"
+              type="button"
+              @click="setSemanticProvider('openai')"
+            >
+              OpenAI
+            </button>
+
+            <button
+              class="query-mode-switch__button"
+              :class="{
+                'query-mode-switch__button--active':
+                  semanticQuerySettings.provider === 'ollama',
+              }"
+              type="button"
+              @click="setSemanticProvider('ollama')"
+            >
+              Ollama
+            </button>
+          </div>
+
+          <div
+            v-if="semanticQuerySettings.provider === 'openai'"
+            class="semantic-provider-grid"
+          >
+            <label class="field">
+              <span class="field__label">OpenAI API key</span>
+              <span class="field__hint">
+                Kept only in this session and not written into local browser
+                storage.
+              </span>
+              <input
+                v-model="semanticQueryApiKey"
+                type="password"
+                placeholder="sk-..."
+                autocomplete="off"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field__label">OpenAI model</span>
+              <input
+                v-model="semanticQuerySettings.openaiModel"
+                type="text"
+                placeholder="text-embedding-3-small"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Base URL</span>
+              <span class="field__hint">
+                Default: <code>https://api.openai.com/v1</code>
+              </span>
+              <input
+                v-model="semanticQuerySettings.openaiBaseUrl"
+                type="text"
+                placeholder="https://api.openai.com/v1"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Dimensions</span>
+              <span class="field__hint">
+                Optional. Set this to the detected collection size when you need
+                a shorter vector.
+              </span>
+              <input
+                v-model="semanticQuerySettings.openaiDimensions"
+                type="number"
+                min="1"
+                :placeholder="
+                  currentCollectionEmbeddingDimension
+                    ? `${currentCollectionEmbeddingDimension}`
+                    : '1536'
+                "
+              />
+            </label>
+          </div>
+
+          <div v-else class="semantic-provider-grid">
+            <label class="field">
+              <span class="field__label">Ollama model</span>
+              <input
+                v-model="semanticQuerySettings.ollamaModel"
+                type="text"
+                placeholder="embeddinggemma"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Ollama URL</span>
+              <span class="field__hint">
+                Default: <code>http://localhost:11434</code>
+              </span>
+              <input
+                v-model="semanticQuerySettings.ollamaBaseUrl"
+                type="text"
+                placeholder="http://localhost:11434"
+              />
+            </label>
+          </div>
+        </div>
+
+        <p v-if="showCreateRecordAutoEmbedSettings" class="query-panel__hint">
+          Current provider: {{ semanticProviderLabel }} /
+          {{ semanticProviderModelLabel }}
+        </p>
+      </section>
 
       <div class="record-dialog__grid">
         <label class="field record-dialog__field--wide">
@@ -4986,7 +5476,8 @@ const exportCSV = async (includeEmbeddings = false) => {
         <label class="field record-dialog__field--wide">
           <span class="field__label">Embedding</span>
           <span class="field__hint"
-            >Required JSON array of finite numbers.</span
+            >Optional JSON array of finite numbers. Leave this empty to
+            auto-generate the vector from the document text.</span
           >
           <textarea
             v-model="createRecordData.embedding"
@@ -5014,12 +5505,12 @@ const exportCSV = async (includeEmbeddings = false) => {
           :disabled="!currentCollection || isCreatingRecord"
           @click="handleCreateRecord"
         >
-          <span>Create record</span>
           <i
             :class="
               isCreatingRecord ? 'pi pi-spin pi-spinner' : 'pi pi-plus-circle'
             "
           ></i>
+          <span>Create record</span>
         </button>
       </div>
     </template>

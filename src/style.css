@@ -951,8 +951,11 @@ pre {
   padding: 1rem 1.1rem;
   border: 1px solid rgba(148, 205, 221, 0.2);
   border-radius: 1.2rem;
-  background:
-    linear-gradient(180deg, rgba(148, 205, 221, 0.1), rgba(108, 167, 255, 0.05)),
+  background: linear-gradient(
+      180deg,
+      rgba(148, 205, 221, 0.1),
+      rgba(108, 167, 255, 0.05)
+    ),
     rgba(255, 255, 255, 0.02);
   text-align: left;
   transition:
@@ -1053,13 +1056,18 @@ pre {
 
 .field select {
   appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-soft) 50%),
+  background-image: linear-gradient(
+      45deg,
+      transparent 50%,
+      var(--text-soft) 50%
+    ),
     linear-gradient(135deg, var(--text-soft) 50%, transparent 50%);
   background-position:
     calc(100% - 1.2rem) calc(50% - 0.12rem),
     calc(100% - 0.9rem) calc(50% - 0.12rem);
-  background-size: 0.45rem 0.45rem, 0.45rem 0.45rem;
+  background-size:
+    0.45rem 0.45rem,
+    0.45rem 0.45rem;
   background-repeat: no-repeat;
   padding-right: 2.35rem;
 }
@@ -1256,8 +1264,16 @@ pre {
 }
 
 .semantic-provider-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.semantic-provider-card__header > div {
   display: grid;
   gap: 0.45rem;
+  min-width: 0;
 }
 
 .semantic-provider-card__header h3 {
@@ -1267,6 +1283,10 @@ pre {
 .semantic-provider-card__copy {
   color: var(--text-soft);
   line-height: 1.6;
+}
+
+.semantic-provider-card__toggle {
+  flex-shrink: 0;
 }
 
 .semantic-provider-card__status {
@@ -2528,6 +2548,7 @@ pre {
 .collection-dialog .p-dialog-footer,
 .record-dialog .p-dialog-footer {
   padding: 0 1.15rem 1.15rem;
+  margin-top: 1rem;
 }
 
 .collection-dialog .p-dialog-header-actions,
