@@ -1,6 +1,6 @@
 # ChromaDB UI
 
-ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls.
+ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls. You can run it locally with Vite or use the app from a Docker container with Docker Compose.
 
 > [!IMPORTANT]  
 > **ChromaDB UI only works with the Chroma v2 API**
@@ -41,7 +41,12 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
 
 ## Getting Started
 
-Follow these steps to run ChromaDB UI locally.
+You can use ChromaDB UI in two ways:
+
+- Run it locally with `npm run dev`.
+- Run the app in a Docker container with Docker Compose.
+
+Follow these steps if you want the local Vite workflow.
 
 1. Clone the repository.
 
@@ -63,18 +68,32 @@ npm run dev
 
 The app runs on `http://localhost:8090` by default.
 
-## Using Docker Compose for ChromaDB
+## Run With Docker Compose
 
-This repository includes a `docker-compose.yml` file that simplifies starting a ChromaDB container.
+This repository includes a `docker-compose.yml` file, so you can start only ChromaDB, only the UI container, or both together.
 
 1. Ensure Docker is installed and running on your machine.
-2. Start the ChromaDB container using the following command
+2. Use the command that matches the workflow you want.
+
+Only ChromaDB:
 
 ```sh
-docker-compose up -d
+docker compose up -d chromadb
 ```
 
-This will start a ChromaDB instance and expose it on the appropriate port.
+Only the UI container:
+
+```sh
+docker compose up -d --build chromadb-ui
+```
+
+ChromaDB and the UI together:
+
+```sh
+docker compose up -d --build
+```
+
+The UI container serves the production build at `http://localhost:8090`.
 
 ## Troubleshooting CORS Issues
 
@@ -87,4 +106,4 @@ persist_path: "/data"
 cors_allow_origins: ["http://localhost:8090"]
 ```
 
-After making these changes, restart both the Docker container and the Vite development server. This should resolve the CORS issue.
+After making these changes, restart the containers or local dev server.
