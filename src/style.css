@@ -2894,7 +2894,6 @@ pre {
   display: grid;
   gap: 0.45rem;
   padding: 0.8rem 0.9rem 0.15rem;
-  border-bottom: 1px solid rgba(255, 190, 114, 0.12);
 }
 
 .metadata-filter-menu__header p:last-child,
