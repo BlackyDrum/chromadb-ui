@@ -1,6 +1,6 @@
 # ChromaDB UI
 
-ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls. You can run it locally with Vite or use the app from a Docker container with Docker Compose.
+ChromaDB UI is a web app for exploring and managing a ChromaDB instance through a visual interface instead of raw API calls.
 
 > [!IMPORTANT]  
 > **ChromaDB UI only works with the Chroma v2 API**
