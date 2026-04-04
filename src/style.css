@@ -2277,22 +2277,22 @@ pre {
   display: flex;
   min-width: 13rem;
   flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.35rem;
+  gap: 0.35rem;
+  padding: 0;
 }
 
 .export-menu {
   display: flex;
   min-width: min(24rem, 78vw);
   flex-direction: column;
-  gap: 0.8rem;
-  padding: 0.45rem;
+  gap: 0.75rem;
+  padding: 0;
 }
 
 .export-menu__header {
   display: grid;
   gap: 0.35rem;
-  padding: 0.55rem 0.55rem 0.2rem;
+  padding: 0.8rem 0.9rem 0.15rem;
 }
 
 .export-menu__header p:last-child {
@@ -2307,21 +2307,33 @@ pre {
   align-items: start;
   width: 100%;
   padding: 0.95rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 190, 114, 0.12);
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: linear-gradient(
+      135deg,
+      rgba(255, 208, 140, 0.1),
+      rgba(255, 141, 91, 0.05)
+    ),
+    rgba(255, 255, 255, 0.03);
   color: var(--text-main);
   text-align: left;
   transition:
     transform 160ms ease,
     border-color 160ms ease,
-    background-color 160ms ease;
+    background-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .export-action:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 190, 114, 0.2);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 190, 114, 0.32);
+  background: linear-gradient(
+      135deg,
+      rgba(255, 208, 140, 0.16),
+      rgba(255, 141, 91, 0.09)
+    ),
+    rgba(255, 255, 255, 0.05);
+  box-shadow: 0 14px 30px rgba(255, 121, 90, 0.12);
 }
 
 .export-action__icon {
@@ -2358,18 +2370,45 @@ pre {
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 0.85rem 0.95rem;
-  border-radius: 0.9rem;
+  padding: 0.9rem 0.95rem;
+  border: 1px solid rgba(255, 190, 114, 0.1);
+  border-radius: 1rem;
+  background: linear-gradient(
+      135deg,
+      rgba(255, 208, 140, 0.08),
+      rgba(255, 141, 91, 0.04)
+    ),
+    rgba(255, 255, 255, 0.02);
   color: var(--text-main);
   text-align: left;
-  transition: background-color 160ms ease;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .menu-action:hover {
-  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+  border-color: rgba(255, 190, 114, 0.28);
+  background: linear-gradient(
+      135deg,
+      rgba(255, 208, 140, 0.14),
+      rgba(255, 141, 91, 0.08)
+    ),
+    rgba(255, 255, 255, 0.05);
+  box-shadow: 0 14px 28px rgba(255, 121, 90, 0.1);
 }
 
 .menu-action--danger {
+  color: #ffb6b3;
+}
+
+.menu-action i {
+  color: var(--amber);
+}
+
+.menu-action--danger i {
   color: #ffb6b3;
 }
 
@@ -2815,14 +2854,25 @@ pre {
 
 .p-overlaypanel.collection-menu-panel,
 .collection-menu-panel.p-overlaypanel {
-  border: 1px solid var(--stroke);
-  border-radius: 1.15rem;
+  border: 1px solid rgba(255, 190, 114, 0.2);
+  border-radius: 1.35rem;
   background: linear-gradient(
-    180deg,
-    rgba(9, 29, 41, 0.98),
-    rgba(4, 18, 28, 0.98)
-  );
-  box-shadow: var(--shadow);
+      135deg,
+      rgba(255, 208, 140, 0.14),
+      rgba(255, 141, 91, 0.08)
+    ),
+    linear-gradient(180deg, rgba(9, 29, 41, 0.98), rgba(4, 18, 28, 0.98));
+  box-shadow:
+    0 24px 54px rgba(255, 121, 90, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  backdrop-filter: blur(24px);
+  overflow: hidden;
+}
+
+.collection-menu-panel.p-overlaypanel .p-overlaypanel-content,
+.p-overlaypanel.collection-menu-panel .p-overlaypanel-content {
+  padding: 0.55rem;
+  background: transparent;
 }
 
 .collection-menu-panel::before,
@@ -2837,12 +2887,14 @@ pre {
 .metadata-filter-menu {
   display: grid;
   gap: 1rem;
-  padding: 0.2rem;
+  padding: 0;
 }
 
 .metadata-filter-menu__header {
   display: grid;
   gap: 0.45rem;
+  padding: 0.8rem 0.9rem 0.15rem;
+  border-bottom: 1px solid rgba(255, 190, 114, 0.12);
 }
 
 .metadata-filter-menu__header p:last-child,
