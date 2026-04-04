@@ -2404,7 +2404,8 @@ pre {
   backdrop-filter: blur(10px);
 }
 
-.p-dialog.collection-dialog {
+.p-dialog.collection-dialog,
+.p-dialog.record-dialog {
   width: min(44rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
   border-radius: 1.6rem;
@@ -2417,35 +2418,75 @@ pre {
   overflow: hidden;
 }
 
+.p-dialog.record-dialog {
+  width: min(56rem, calc(100vw - 2rem));
+}
+
 .collection-dialog .p-dialog-header,
 .collection-dialog .p-dialog-content,
-.collection-dialog .p-dialog-footer {
+.collection-dialog .p-dialog-footer,
+.record-dialog .p-dialog-header,
+.record-dialog .p-dialog-content,
+.record-dialog .p-dialog-footer {
   border: 0;
   background: transparent;
 }
 
-.collection-dialog .p-dialog-header {
+.collection-dialog .p-dialog-header,
+.record-dialog .p-dialog-header {
   padding: 1.15rem 1.15rem 0.4rem;
 }
 
-.collection-dialog .p-dialog-content {
+.collection-dialog .p-dialog-content,
+.record-dialog .p-dialog-content {
   padding: 0.7rem 1.15rem 1rem;
 }
 
-.collection-dialog .p-dialog-footer {
+.collection-dialog .p-dialog-footer,
+.record-dialog .p-dialog-footer {
   padding: 0 1.15rem 1.15rem;
 }
 
-.collection-dialog .p-dialog-header-actions {
+.collection-dialog .p-dialog-header-actions,
+.record-dialog .p-dialog-header-actions {
   gap: 0.45rem;
 }
 
-.collection-dialog .p-dialog-header-icon {
+.collection-dialog .p-dialog-header-icon,
+.record-dialog .p-dialog-header-icon {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.9rem;
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-soft);
+}
+
+.record-dialog__body {
+  gap: 1.1rem;
+}
+
+.record-dialog__meta {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.record-dialog__meta p {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.record-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.record-dialog__field--wide {
+  grid-column: 1 / -1;
 }
 
 .p-dialog.import-dialog {
@@ -3057,6 +3098,10 @@ pre {
   }
 
   .import-source-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .record-dialog__grid {
     grid-template-columns: 1fr;
   }
 

@@ -34,6 +34,12 @@ const currentCollection = ref(null);
 const currentCollectionData = ref([]);
 const createCollectionData = ref({ name: null, metadata: null });
 const editCollectionData = ref({ name: null, metadata: null });
+const createRecordData = ref({
+  id: "",
+  document: "",
+  metadata: "",
+  embedding: "",
+});
 const selectedCollection = ref(null);
 const embeddingPreviewCache = ref({});
 const embeddingVectorCache = ref({});
@@ -60,9 +66,11 @@ const isEditingCollection = ref(false);
 const isQueryingCollection = ref(false);
 const isExportingCsv = ref(false);
 const isImportingRecords = ref(false);
+const isCreatingRecord = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
+const showCreateRecordForm = ref(false);
 const mobileSidebarOpen = ref(false);
 const collectionSearch = ref("");
 const showQueryViewer = ref(false);
@@ -161,6 +169,18 @@ const formatPercentage = (value, total) => {
   if (!total) return "0%";
 
   return `${Math.round((value / total) * 100)}%`;
+};
+
+const createEmptyRecordDraft = () => ({
+  id: "",
+  document: "",
+  metadata: "",
+  embedding: "",
+});
+
+const resetCreateRecordState = () => {
+  showCreateRecordForm.value = false;
+  createRecordData.value = createEmptyRecordDraft();
 };
 
 const resetImportState = () => {
@@ -951,6 +971,7 @@ const retrieveCollections = async () => {
       currentCollectionData.value = [];
       resetTableFilters();
       resetEmbeddingViews();
+      resetCreateRecordState();
     }
   } catch (error) {
     toast.add({
@@ -1890,6 +1911,7 @@ const handleDisconnect = () => {
   lastQuerySummary.value = "";
   hasCompletedQuery.value = false;
   showQueryViewer.value = false;
+  resetCreateRecordState();
   resetImportState();
   showMetricsViewer.value = false;
   metricsEmbeddingSummary.value = null;
@@ -1923,6 +1945,7 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   lastQuerySummary.value = "";
   hasCompletedQuery.value = false;
   showQueryViewer.value = false;
+  resetCreateRecordState();
   resetImportState();
   showMetricsViewer.value = false;
   metricsEmbeddingSummary.value = null;
@@ -2017,6 +2040,124 @@ const handleCreateCollection = async () => {
   }
 };
 
+const handleCreateRecordButtonClick = () => {
+  createRecordData.value = createEmptyRecordDraft();
+  showCreateRecordForm.value = true;
+};
+
+const handleCreateRecord = async () => {
+  if (!currentCollection.value || isCreatingRecord.value) return;
+
+  const trimmedId = `${createRecordData.value.id ?? ""}`.trim();
+  const documentValue = `${createRecordData.value.document ?? ""}`;
+  const normalizedDocument = documentValue.trim() ? documentValue : "";
+  const trimmedMetadata = `${createRecordData.value.metadata ?? ""}`.trim();
+  let metadata = null;
+  let parsedEmbedding;
+
+  if (!trimmedId) {
+    toast.add({
+      severity: "error",
+      summary: "Missing record ID",
+      detail: "Provide a unique ID before creating a record.",
+      life: 5000,
+    });
+    return;
+  }
+
+  if (currentCollectionData.value.some((row) => row.id === trimmedId)) {
+    toast.add({
+      severity: "error",
+      summary: "Duplicate record ID",
+      detail: `${trimmedId} already exists in the current collection.`,
+      life: 5000,
+    });
+    return;
+  }
+
+  try {
+    parsedEmbedding = parseEmbeddingDraft(createRecordData.value.embedding);
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid embedding",
+      detail: error.message,
+      life: 5000,
+    });
+    return;
+  }
+
+  if (trimmedMetadata) {
+    try {
+      metadata = JSON.parse(trimmedMetadata);
+    } catch (_) {
+      toast.add({
+        severity: "error",
+        summary: "Invalid metadata",
+        detail: "Metadata must be valid JSON.",
+        life: 5000,
+      });
+      return;
+    }
+
+    if (
+      metadata !== null &&
+      (typeof metadata !== "object" || Array.isArray(metadata))
+    ) {
+      toast.add({
+        severity: "error",
+        summary: "Invalid metadata",
+        detail: "Metadata must be a JSON object or null.",
+        life: 5000,
+      });
+      return;
+    }
+  }
+
+  isCreatingRecord.value = true;
+
+  try {
+    await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/add`,
+      {
+        ids: [trimmedId],
+        embeddings: [parsedEmbedding],
+        documents: normalizedDocument ? [normalizedDocument] : null,
+        metadatas: trimmedMetadata ? [metadata] : null,
+        uris: null,
+      },
+    );
+
+    currentCollectionData.value = [
+      {
+        id: trimmedId,
+        document: normalizedDocument,
+        metadata: trimmedMetadata ? safeStringify(metadata) : "null",
+      },
+      ...currentCollectionData.value,
+    ];
+
+    toast.add({
+      severity: "success",
+      summary: "Record created",
+      detail: `${trimmedId} was added to ${currentCollection.value.name}.`,
+      life: 4000,
+    });
+
+    resetCreateRecordState();
+    await retrieveCollections();
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Create failed",
+      detail: `Unable to create the record. Reason: ${getErrorMessage(error)}`,
+      life: 6000,
+    });
+  } finally {
+    isCreatingRecord.value = false;
+  }
+};
+
 const toggleCollectionOverlayPanel = (event, collection) => {
   if (isDeletingCollection.value) return;
 
@@ -2054,6 +2195,7 @@ const handleCollectionDeletion = () => {
           queryResults.value = [];
           lastQuerySummary.value = "";
           showQueryViewer.value = false;
+          resetCreateRecordState();
           resetImportState();
           showMetricsViewer.value = false;
           metricsEmbeddingSummary.value = null;
@@ -2939,6 +3081,16 @@ const exportCSV = async (includeEmbeddings = false) => {
                 </div>
 
                 <div class="table-toolbar__actions">
+                  <button
+                    class="ui-button ui-button--primary"
+                    type="button"
+                    :disabled="!currentCollection || isFetchingCollectionData"
+                    @click="handleCreateRecordButtonClick"
+                  >
+                    <i class="pi pi-plus-circle"></i>
+                    <span>Create record</span>
+                  </button>
+
                   <button
                     class="ui-button ui-button--ghost metadata-filter-button"
                     :class="{
@@ -4170,6 +4322,108 @@ const exportCSV = async (includeEmbeddings = false) => {
         >
           <i class="pi pi-copy"></i>
           <span>Copy vector JSON</span>
+        </button>
+      </div>
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="showCreateRecordForm"
+    modal
+    :draggable="false"
+    class="record-dialog"
+    @hide="resetCreateRecordState"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Create record</p>
+        <h2>Add a new row to this collection</h2>
+      </div>
+    </template>
+
+    <div class="dialog-body record-dialog__body">
+      <div class="record-dialog__meta">
+        <span class="tag-chip">
+          {{
+            currentCollection ? currentCollection.name : "Select a collection"
+          }}
+        </span>
+        <p>
+          Add a single record with an embedding. The vector must match the
+          collection's dimension size.
+        </p>
+      </div>
+
+      <div class="record-dialog__grid">
+        <label class="field record-dialog__field--wide">
+          <span class="field__label">Record ID</span>
+          <span class="field__hint">Use a unique ID.</span>
+          <input
+            v-model="createRecordData.id"
+            type="text"
+            placeholder="support-004"
+          />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Document</span>
+          <span class="field__hint"
+            >Optional plain text stored alongside the vector.</span
+          >
+          <textarea
+            v-model="createRecordData.document"
+            rows="7"
+            placeholder="Customer asked how to rotate an API key safely."
+          ></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Metadata</span>
+          <span class="field__hint">Optional JSON object.</span>
+          <textarea
+            v-model="createRecordData.metadata"
+            rows="7"
+            placeholder='{"topic":"security","lang":"en"}'
+          ></textarea>
+        </label>
+
+        <label class="field record-dialog__field--wide">
+          <span class="field__label">Embedding</span>
+          <span class="field__hint"
+            >Required JSON array of finite numbers.</span
+          >
+          <textarea
+            v-model="createRecordData.embedding"
+            rows="9"
+            placeholder="[0.12, -0.44, 0.87, 0.03]"
+          ></textarea>
+        </label>
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          :disabled="isCreatingRecord"
+          @click="resetCreateRecordState"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="ui-button ui-button--primary"
+          type="button"
+          :disabled="!currentCollection || isCreatingRecord"
+          @click="handleCreateRecord"
+        >
+          <span>Create record</span>
+          <i
+            :class="
+              isCreatingRecord ? 'pi pi-spin pi-spinner' : 'pi pi-plus-circle'
+            "
+          ></i>
         </button>
       </div>
     </template>
