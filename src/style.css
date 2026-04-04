@@ -2451,6 +2451,10 @@ pre {
   color: var(--text-soft);
 }
 
+.embedding-table.p-datatable-gridlines .p-datatable-paginator-bottom {
+  border: 0 !important;
+}
+
 .embedding-table .p-paginator .p-paginator-page,
 .embedding-table .p-paginator .p-paginator-next,
 .embedding-table .p-paginator .p-paginator-prev,
