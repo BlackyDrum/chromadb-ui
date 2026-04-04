@@ -4243,6 +4243,7 @@ const exportCSV = async (includeEmbeddings = false) => {
               :value="importPayload"
               class="import-panel__textarea scroll-container"
               rows="18"
+              placeholder="Enter your payload here"
               @input="updateImportPayload($event.target.value)"
             ></textarea>
           </label>
