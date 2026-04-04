@@ -1,5 +1,12 @@
 <script setup>
-import { computed, nextTick, onBeforeMount, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeMount,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from "vue";
 
 import axios from "axios";
 
@@ -59,6 +66,7 @@ const embeddingDataTable = ref();
 const queryResultsSection = ref(null);
 
 const connected = ref(false);
+const workspaceHealthStatus = ref("offline");
 const isInitializingConnection = ref(false);
 const isFetchingCollectionData = ref(false);
 const isCreatingCollection = ref(false);
@@ -68,6 +76,7 @@ const isQueryingCollection = ref(false);
 const isExportingCsv = ref(false);
 const isImportingRecords = ref(false);
 const isCreatingRecord = ref(false);
+const isCheckingWorkspaceHealth = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
@@ -140,6 +149,8 @@ const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
 const SEMANTIC_QUERY_SETTINGS_STORAGE_KEY = "semantic_query_settings";
+const WORKSPACE_HEALTH_CHECK_INTERVAL = 15000;
+const WORKSPACE_HEALTH_CHECK_TIMEOUT = 5000;
 const METADATA_FILTER_OPERATORS = [
   { label: "Equals", value: "equals" },
   { label: "Contains", value: "contains" },
@@ -168,6 +179,7 @@ const IMPORT_EXAMPLE_PAYLOAD = `[
 ]`;
 
 let metadataFilterRuleSequence = 0;
+let workspaceHealthCheckTimer = null;
 
 const safeStringify = (value, pretty = false) => {
   if (value === null || value === undefined) return "null";
@@ -564,6 +576,48 @@ const activeEndpoint = computed(() => {
   }
 });
 
+const workspaceStatusLabel = computed(() => {
+  if (!connected.value) return "Workspace offline";
+
+  if (workspaceHealthStatus.value === "unreachable") {
+    return "Workspace unavailable";
+  }
+
+  if (workspaceHealthStatus.value === "checking") {
+    return "Checking workspace";
+  }
+
+  return "Live workspace";
+});
+
+const workspaceStatusDotClass = computed(() => {
+  if (!connected.value) return "status-dot--offline";
+
+  if (workspaceHealthStatus.value === "unreachable") {
+    return "status-dot--offline";
+  }
+
+  if (workspaceHealthStatus.value === "checking") {
+    return "status-dot--warm";
+  }
+
+  return "status-dot--live";
+});
+
+const workspaceConnectionMetricLabel = computed(() => {
+  if (!connected.value) return "Offline";
+
+  if (workspaceHealthStatus.value === "unreachable") {
+    return "Unavailable";
+  }
+
+  if (workspaceHealthStatus.value === "checking") {
+    return "Checking";
+  }
+
+  return "Online";
+});
+
 const filteredCollections = computed(() => {
   const searchValue = collectionSearch.value.trim().toLowerCase();
 
@@ -720,7 +774,7 @@ const dashboardMetrics = computed(() => {
     },
     {
       label: "Connection",
-      value: connected.value ? "Online" : "Offline",
+      value: workspaceConnectionMetricLabel.value,
       description: `${tenant.value} / ${database.value}`,
     },
   ];
@@ -1107,6 +1161,61 @@ const initializeTenantAndDatabase = async () => {
   ]);
 
   collectionBaseUrl.value = `${apiUrl.value}/tenants/${tenant.value}/databases/${database.value}/collections`;
+};
+
+const stopWorkspaceHealthCheck = () => {
+  if (workspaceHealthCheckTimer) {
+    window.clearInterval(workspaceHealthCheckTimer);
+    workspaceHealthCheckTimer = null;
+  }
+
+  isCheckingWorkspaceHealth.value = false;
+};
+
+const checkWorkspaceHealth = async () => {
+  if (
+    !connected.value ||
+    !apiUrl.value ||
+    isInitializingConnection.value ||
+    isCheckingWorkspaceHealth.value
+  ) {
+    return;
+  }
+
+  isCheckingWorkspaceHealth.value = true;
+
+  if (workspaceHealthStatus.value !== "unreachable") {
+    workspaceHealthStatus.value = "checking";
+  }
+
+  try {
+    await axios.get(apiUrl.value, {
+      timeout: WORKSPACE_HEALTH_CHECK_TIMEOUT,
+    });
+
+    if (connected.value) {
+      workspaceHealthStatus.value = "live";
+    }
+  } catch (_) {
+    if (connected.value) {
+      workspaceHealthStatus.value = "unreachable";
+    }
+  } finally {
+    isCheckingWorkspaceHealth.value = false;
+  }
+};
+
+const startWorkspaceHealthCheck = () => {
+  stopWorkspaceHealthCheck();
+
+  if (!connected.value || !apiUrl.value) return;
+
+  workspaceHealthStatus.value = "live";
+
+  // Keep the workspace badge in sync if the Chroma server disappears.
+  workspaceHealthCheckTimer = window.setInterval(() => {
+    void checkWorkspaceHealth();
+  }, WORKSPACE_HEALTH_CHECK_INTERVAL);
 };
 
 const retrieveCollections = async () => {
@@ -2436,6 +2545,8 @@ const handleConnectionInitialization = async () => {
   }
 
   isInitializingConnection.value = true;
+  workspaceHealthStatus.value = "offline";
+  stopWorkspaceHealthCheck();
 
   try {
     await axios.get(`${url.value}/api/v2`);
@@ -2453,6 +2564,8 @@ const handleConnectionInitialization = async () => {
     }
 
     connected.value = true;
+    workspaceHealthStatus.value = "live";
+    startWorkspaceHealthCheck();
     mobileSidebarOpen.value = false;
   } catch (error) {
     toast.add({
@@ -2467,7 +2580,9 @@ const handleConnectionInitialization = async () => {
 };
 
 const handleDisconnect = () => {
+  stopWorkspaceHealthCheck();
   connected.value = false;
+  workspaceHealthStatus.value = "offline";
   collections.value = [];
   currentCollection.value = null;
   currentCollectionData.value = [];
@@ -2485,6 +2600,10 @@ const handleDisconnect = () => {
   showMetricsViewer.value = false;
   metricsEmbeddingSummary.value = null;
 };
+
+onBeforeUnmount(() => {
+  stopWorkspaceHealthCheck();
+});
 
 const update = async () => {
   await retrieveCollections();
@@ -3338,9 +3457,15 @@ const exportCSV = async (includeEmbeddings = false) => {
       </div>
 
       <div class="sidebar-connection">
-        <div class="sidebar-connection__status">
-          <span class="status-dot status-dot--live"></span>
-          <span>Live workspace</span>
+        <div
+          class="sidebar-connection__status"
+          :class="{
+            'sidebar-connection__status--unreachable':
+              workspaceHealthStatus === 'unreachable',
+          }"
+        >
+          <span class="status-dot" :class="workspaceStatusDotClass"></span>
+          <span>{{ workspaceStatusLabel }}</span>
         </div>
 
         <p class="sidebar-connection__endpoint">{{ activeEndpoint }}</p>

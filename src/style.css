@@ -237,6 +237,11 @@ pre {
   background: var(--amber);
 }
 
+.status-dot--offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 0.3rem rgba(255, 143, 141, 0.14);
+}
+
 .ui-button,
 .icon-button {
   display: inline-flex;
@@ -533,6 +538,10 @@ pre {
   gap: 0.7rem;
   color: var(--text-soft);
   font-size: 0.9rem;
+}
+
+.sidebar-connection__status--unreachable {
+  color: #ffd1cf;
 }
 
 .sidebar-connection__endpoint {
