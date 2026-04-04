@@ -1548,7 +1548,8 @@ const handleImportRecords = async () => {
 
     if (duplicateIds.length) {
       const previewIds = duplicateIds.slice(0, 3).join(", ");
-      const remainingCount = duplicateIds.length - Math.min(duplicateIds.length, 3);
+      const remainingCount =
+        duplicateIds.length - Math.min(duplicateIds.length, 3);
 
       toast.add({
         severity: "error",
@@ -1573,7 +1574,7 @@ const handleImportRecords = async () => {
     toast.add({
       severity: "success",
       summary: "Import complete",
-      detail: `${successVerb} ${formatNumber(parsedRecords.length)} records${recordsWithEmbeddings ? `, including ${formatNumber(recordsWithEmbeddings)} explicit embeddings` : ""}.`,
+      detail: `${successVerb} ${formatNumber(parsedRecords.length)} records.`,
       life: 5000,
     });
 
