@@ -1722,6 +1722,48 @@ const buildActivityRecordDetailSection = ({
   };
 };
 
+const buildCollectionActivityDetailSection = ({
+  title = "Collection settings",
+  beforeName,
+  afterName,
+  beforeMetadata,
+  afterMetadata,
+  includeAllFields = false,
+}) => {
+  const changes = [];
+
+  if (includeAllFields || beforeName !== afterName) {
+    changes.push(
+      buildActivityDetailChange({
+        label: "Name",
+        before: beforeName,
+        after: afterName,
+      }),
+    );
+  }
+
+  if (
+    includeAllFields ||
+    safeStringify(beforeMetadata) !== safeStringify(afterMetadata)
+  ) {
+    changes.push(
+      buildActivityDetailChange({
+        label: "Metadata",
+        before: beforeMetadata,
+        after: afterMetadata,
+        format: "json",
+      }),
+    );
+  }
+
+  return changes.length
+    ? {
+        title,
+        changes,
+      }
+    : null;
+};
+
 const normalizeActivityDetailChange = (change) => {
   const normalizedLabel = `${change?.label ?? ""}`.trim();
   const before = trimActivityDetailText(change?.before);
@@ -1864,6 +1906,8 @@ const activityLogSummary = computed(() => {
 
 const getActivityTypeLabel = (type) => {
   switch (type) {
+    case "collection":
+      return "Collection";
     case "delete":
       return "Delete";
     case "metadata":
@@ -1883,6 +1927,8 @@ const getActivityTypeLabel = (type) => {
 
 const getActivityIcon = (type) => {
   switch (type) {
+    case "collection":
+      return "pi pi-folder-open";
     case "delete":
       return "pi pi-trash";
     case "metadata":
@@ -3719,6 +3765,7 @@ const handleCreateCollection = async () => {
 
   isCreatingCollection.value = true;
   const createdCollectionName = createCollectionData.value.name;
+  const createdCollectionMetadata = metadata;
 
   try {
     await axios.post(collectionBaseUrl.value, {
@@ -3741,6 +3788,22 @@ const handleCreateCollection = async () => {
     const createdCollection = collections.value.find(
       (collection) => collection.name === createdCollectionName,
     );
+
+    appendActivityLogEntry({
+      type: "collection",
+      title: `Created collection ${createdCollectionName}`,
+      description: `Added ${createdCollectionName} to the current workspace.`,
+      collectionId: createdCollection?.id ?? "",
+      collectionName: createdCollectionName,
+      details: [
+        buildCollectionActivityDetailSection({
+          title: createdCollectionName,
+          afterName: createdCollectionName,
+          afterMetadata: createdCollectionMetadata,
+          includeAllFields: true,
+        }),
+      ].filter(Boolean),
+    });
 
     if (createdCollection) {
       await handleCollectionSelection(createdCollection, true);
@@ -3921,6 +3984,9 @@ const handleCollectionDeletion = () => {
     acceptIcon: "pi pi-trash",
     accept: async () => {
       isDeletingCollection.value = true;
+      const deletedCollection = selectedCollection.value
+        ? JSON.parse(JSON.stringify(selectedCollection.value))
+        : null;
 
       try {
         await axios.delete(
@@ -3949,6 +4015,24 @@ const handleCollectionDeletion = () => {
 
         if (collectionIndex !== -1) {
           collections.value.splice(collectionIndex, 1);
+        }
+
+        if (deletedCollection) {
+          appendActivityLogEntry({
+            type: "collection",
+            title: `Deleted collection ${deletedCollection.name}`,
+            description: `Removed ${deletedCollection.name} from the current workspace.`,
+            collectionId: deletedCollection.id ?? "",
+            collectionName: deletedCollection.name ?? "",
+            details: [
+              buildCollectionActivityDetailSection({
+                title: deletedCollection.name,
+                beforeName: deletedCollection.name,
+                beforeMetadata: deletedCollection.metadata ?? null,
+                includeAllFields: true,
+              }),
+            ].filter(Boolean),
+          });
         }
       } catch (error) {
         toast.add({
@@ -3987,6 +4071,8 @@ const handleEditCollection = async () => {
   if (isEditingCollection.value) return;
 
   let metadata = null;
+  const previousName = `${selectedCollection.value?.name ?? ""}`;
+  const previousMetadata = selectedCollection.value?.metadata ?? null;
 
   try {
     metadata = editCollectionData.value.metadata
@@ -4003,6 +4089,7 @@ const handleEditCollection = async () => {
   }
 
   isEditingCollection.value = true;
+  const nextName = `${editCollectionData.value.name ?? ""}`;
 
   try {
     await axios.put(
@@ -4022,12 +4109,41 @@ const handleEditCollection = async () => {
       collections.value[collectionIndex].metadata = metadata;
     }
 
+    const collectionDetailSection = buildCollectionActivityDetailSection({
+      title: nextName || previousName || "Collection settings",
+      beforeName: previousName,
+      afterName: nextName,
+      beforeMetadata: previousMetadata,
+      afterMetadata: metadata,
+    });
+
     toast.add({
       severity: "success",
       summary: "Success",
       detail: "Collection updated",
       life: 5000,
     });
+
+    appendActivityLogEntry({
+      type: "collection",
+      title:
+        previousName !== nextName
+          ? `Renamed collection ${previousName} to ${nextName}`
+          : `Updated collection ${nextName}`,
+      description:
+        previousName !== nextName
+          ? `Renamed ${previousName} to ${nextName} in the current workspace.`
+          : `Updated settings for ${nextName} in the current workspace.`,
+      collectionId: selectedCollection.value.id,
+      collectionName: nextName,
+      details: collectionDetailSection ? [collectionDetailSection] : [],
+    });
+
+    selectedCollection.value = {
+      ...selectedCollection.value,
+      name: nextName,
+      metadata,
+    };
 
     showEditCollectionForm.value = false;
   } catch (error) {
@@ -5781,7 +5897,7 @@ const exportCSV = async (includeEmbeddings = false) => {
 
           <div class="activity-log-entry__footer">
             <div class="activity-log-entry__facts">
-              <span>
+              <span v-if="entry.rowCount > 0">
                 {{ formatNumber(entry.rowCount) }}
                 {{ pluralize(entry.rowCount, "row") }}
               </span>
