@@ -768,7 +768,7 @@ pre {
 
 .workspace-header__actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
   width: 100%;
   align-items: stretch;
@@ -1022,6 +1022,83 @@ pre {
 }
 
 .workspace-metrics-cta__copy span {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.workspace-activity-cta {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(163, 192, 255, 0.2);
+  border-radius: 1.2rem;
+  background: linear-gradient(
+      180deg,
+      rgba(163, 192, 255, 0.1),
+      rgba(255, 190, 114, 0.05)
+    ),
+    rgba(255, 255, 255, 0.02);
+  text-align: left;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.workspace-activity-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(163, 192, 255, 0.36);
+  box-shadow: 0 18px 36px rgba(93, 126, 214, 0.14);
+}
+
+.workspace-activity-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.workspace-activity-cta__icon {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 0.95rem;
+  background: linear-gradient(
+    135deg,
+    rgba(163, 192, 255, 0.24),
+    rgba(255, 190, 114, 0.18)
+  );
+  color: #c8dcff;
+  font-size: 1rem;
+}
+
+.workspace-activity-cta__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+}
+
+.workspace-activity-cta__copy small {
+  color: #c8dcff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.workspace-activity-cta__copy strong {
+  font-family: "Space Grotesk", "Aptos Display", sans-serif;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.workspace-activity-cta__copy span {
   color: var(--text-soft);
   line-height: 1.55;
 }
@@ -2948,6 +3025,178 @@ pre {
   color: var(--text-soft);
 }
 
+.p-dialog.activity-dialog {
+  width: min(64rem, calc(100vw - 2rem));
+  border: 1px solid var(--stroke);
+  border-radius: 1.6rem;
+  background: linear-gradient(
+    180deg,
+    rgba(9, 29, 41, 0.96),
+    rgba(4, 18, 28, 0.98)
+  );
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.activity-dialog .p-dialog-header,
+.activity-dialog .p-dialog-content,
+.activity-dialog .p-dialog-footer {
+  border: 0;
+  background: transparent;
+}
+
+.activity-dialog .p-dialog-header {
+  padding: 1.15rem 1.15rem 0.4rem;
+}
+
+.activity-dialog .p-dialog-content {
+  padding: 0.7rem 1.15rem 1.15rem;
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
+}
+
+.activity-dialog .p-dialog-header-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-soft);
+}
+
+.activity-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.activity-panel__copy {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.activity-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.activity-log-list {
+  display: grid;
+  gap: 0.9rem;
+  max-height: 34rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.activity-log-entry {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.02)
+  );
+}
+
+.activity-log-entry__top,
+.activity-log-entry__footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.activity-log-entry__icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 1rem;
+  background: linear-gradient(
+    135deg,
+    rgba(83, 229, 191, 0.15),
+    rgba(255, 190, 114, 0.16)
+  );
+  color: var(--teal);
+}
+
+.activity-log-entry__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-log-entry__copy h3 {
+  margin-bottom: 0.3rem;
+  font-size: 1.05rem;
+}
+
+.activity-log-entry__copy p:last-child {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.activity-log-entry__meta {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 8rem;
+  text-align: right;
+}
+
+.activity-log-entry__time {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.activity-log-entry__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.activity-log-entry__facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.activity-log-empty {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  padding: 2.3rem 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 1.25rem;
+  text-align: center;
+}
+
+.activity-log-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1.2rem;
+  background: linear-gradient(
+    135deg,
+    rgba(163, 192, 255, 0.18),
+    rgba(255, 190, 114, 0.14)
+  );
+  color: #c8dcff;
+  font-size: 1.25rem;
+}
+
+.activity-log-empty p {
+  max-width: 34rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
 .p-dialog.query-dialog {
   width: min(72rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
@@ -3503,6 +3752,11 @@ pre {
     overflow: auto;
   }
 
+  .activity-dialog .p-dialog-content {
+    max-height: calc(100vh - 7rem);
+    overflow: auto;
+  }
+
   .query-panel--dialog {
     height: auto;
   }
@@ -3592,7 +3846,8 @@ pre {
 
   .workspace-query-cta,
   .workspace-import-cta,
-  .workspace-metrics-cta {
+  .workspace-metrics-cta,
+  .workspace-activity-cta {
     min-width: 0;
     width: 100%;
     max-width: none;
@@ -3620,6 +3875,8 @@ pre {
   .query-panel__controls,
   .query-panel__results-header,
   .query-panel__header-actions,
+  .activity-log-entry__top,
+  .activity-log-entry__footer,
   .quality-audit-finding__top,
   .query-result-card__top,
   .query-result-card__actions,
@@ -3660,6 +3917,7 @@ pre {
   .metrics-card-grid,
   .metrics-grid,
   .metrics-embedding-grid,
+  .activity-summary-grid,
   .query-results-grid,
   .embedding-dialog__grid {
     grid-template-columns: 1fr;

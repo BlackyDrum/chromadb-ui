@@ -90,6 +90,7 @@ const collectionSearch = ref("");
 const showQueryViewer = ref(false);
 const showImportViewer = ref(false);
 const showMetricsViewer = ref(false);
+const showActivityLogViewer = ref(false);
 const showImportAutoEmbedSettings = ref(false);
 const showCreateRecordAutoEmbedSettings = ref(false);
 const bulkMetadataMode = ref("merge");
@@ -121,6 +122,7 @@ const importPayload = ref("");
 const importFileName = ref("");
 const isLoadingMetricsEmbeddings = ref(false);
 const metricsEmbeddingSummary = ref(null);
+const activityLog = ref([]);
 
 const entryHighlights = [
   {
@@ -147,6 +149,7 @@ onBeforeMount(() => {
   retrieveConnectionParameters();
   retrieveSemanticQuerySettings();
   retrieveQueryHistory();
+  retrieveActivityLog();
 });
 
 const EMBEDDING_PREVIEW_SAMPLE_COUNT = 6;
@@ -154,6 +157,9 @@ const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
+const ACTIVITY_LOG_LIMIT = 50;
+const ACTIVITY_LOG_ID_PREVIEW_LIMIT = 20;
+const ACTIVITY_LOG_STORAGE_KEY = "activity_log";
 const SEMANTIC_QUERY_SETTINGS_STORAGE_KEY = "semantic_query_settings";
 const WORKSPACE_HEALTH_CHECK_INTERVAL = 15000;
 const WORKSPACE_HEALTH_CHECK_TIMEOUT = 5000;
@@ -187,6 +193,7 @@ const IMPORT_EXAMPLE_PAYLOAD = `[
 
 let metadataFilterRuleSequence = 0;
 let workspaceHealthCheckTimer = null;
+let activityLogSequence = 0;
 
 const safeStringify = (value, pretty = false) => {
   if (value === null || value === undefined) return "null";
@@ -1570,6 +1577,198 @@ const retrieveQueryHistory = () => {
   }
 };
 
+const normalizeActivityLogEntry = (entry) => {
+  return {
+    id:
+      `${entry?.id ?? ""}`.trim() ||
+      `activity-${Date.now()}-${(activityLogSequence += 1)}`,
+    type: `${entry?.type ?? "event"}`.trim() || "event",
+    title: `${entry?.title ?? "Activity"}`.trim() || "Activity",
+    description: `${entry?.description ?? ""}`.trim(),
+    timestamp: `${entry?.timestamp ?? new Date().toISOString()}`.trim(),
+    workspaceKey: `${entry?.workspaceKey ?? ""}`.trim(),
+    collectionId: `${entry?.collectionId ?? ""}`.trim(),
+    collectionName: `${entry?.collectionName ?? ""}`.trim(),
+    rowCount: Math.max(0, Number(entry?.rowCount) || 0),
+    rowIds: Array.isArray(entry?.rowIds)
+      ? entry.rowIds
+          .map((id) => `${id ?? ""}`.trim())
+          .filter(Boolean)
+          .slice(0, ACTIVITY_LOG_ID_PREVIEW_LIMIT)
+      : [],
+    meta:
+      entry?.meta && typeof entry.meta === "object" ? { ...entry.meta } : {},
+  };
+};
+
+const buildWorkspaceActivityKey = (
+  connectionUrl = url.value,
+  connectionTenant = tenant.value,
+  connectionDatabase = database.value,
+) => {
+  return [connectionUrl, connectionTenant, connectionDatabase]
+    .map((value) => `${value ?? ""}`.trim())
+    .join("::");
+};
+
+const currentWorkspaceActivityKey = computed(() => buildWorkspaceActivityKey());
+
+const currentWorkspaceActivityLog = computed(() => {
+  const activeWorkspaceKey = currentWorkspaceActivityKey.value;
+
+  return activityLog.value.filter(
+    (entry) => entry.workspaceKey === activeWorkspaceKey,
+  );
+});
+
+const currentCollectionActivityLog = computed(() => {
+  if (!currentCollection.value) {
+    return [];
+  }
+
+  return currentWorkspaceActivityLog.value.filter(
+    (entry) => entry.collectionId === currentCollection.value.id,
+  );
+});
+
+const formatActivityTimestamp = (value) => formatQueryHistoryTimestamp(value);
+
+const activityLogSummary = computed(() => {
+  const workspaceEntries = currentWorkspaceActivityLog.value;
+  const latestEntry = workspaceEntries[0] ?? null;
+  const collectionsTouched = new Set(
+    workspaceEntries
+      .map((entry) => entry.collectionId || entry.collectionName)
+      .filter(Boolean),
+  ).size;
+
+  return [
+    {
+      label: "Events",
+      value: formatNumber(workspaceEntries.length),
+      description: "Recent changes captured for this workspace.",
+    },
+    {
+      label: "Collections",
+      value: formatNumber(collectionsTouched),
+      description: "Collections touched by the recent timeline.",
+    },
+    {
+      label: "This collection",
+      value: formatNumber(currentCollectionActivityLog.value.length),
+      description: currentCollection.value
+        ? `Events tied to ${currentCollection.value.name}.`
+        : "Select a collection to focus the timeline.",
+    },
+    {
+      label: "Latest change",
+      value: latestEntry
+        ? formatActivityTimestamp(latestEntry.timestamp)
+        : "None",
+      description: latestEntry
+        ? latestEntry.title
+        : "No activity has been logged yet.",
+    },
+  ];
+});
+
+const getActivityTypeLabel = (type) => {
+  switch (type) {
+    case "delete":
+      return "Delete";
+    case "metadata":
+      return "Metadata patch";
+    case "edit":
+      return "Row edit";
+    case "embedding":
+      return "Embedding edit";
+    case "import":
+      return "Import";
+    case "create":
+      return "Create";
+    default:
+      return "Activity";
+  }
+};
+
+const getActivityIcon = (type) => {
+  switch (type) {
+    case "delete":
+      return "pi pi-trash";
+    case "metadata":
+      return "pi pi-pencil";
+    case "edit":
+      return "pi pi-file-edit";
+    case "embedding":
+      return "pi pi-chart-line";
+    case "import":
+      return "pi pi-upload";
+    case "create":
+      return "pi pi-plus-circle";
+    default:
+      return "pi pi-history";
+  }
+};
+
+const getActivityModeLabel = (mode) => {
+  switch (`${mode ?? ""}`.trim()) {
+    case "upsert":
+      return "Upsert";
+    case "add":
+      return "Add only";
+    case "merge":
+      return "Merge patch";
+    case "replace":
+      return "Replace all";
+    case "clear":
+      return "Clear metadata";
+    default:
+      return `${mode ?? ""}`.trim();
+  }
+};
+
+const storeActivityLog = (entries) => {
+  const nextEntries = entries.slice(0, ACTIVITY_LOG_LIMIT);
+  activityLog.value = nextEntries;
+
+  try {
+    localStorage.setItem(ACTIVITY_LOG_STORAGE_KEY, JSON.stringify(nextEntries));
+  } catch (_) {
+    // Ignore storage failures so the in-memory timeline still works.
+  }
+};
+
+const retrieveActivityLog = () => {
+  const storedActivityLog = localStorage.getItem(ACTIVITY_LOG_STORAGE_KEY);
+  if (!storedActivityLog) return;
+
+  try {
+    const parsedEntries = JSON.parse(storedActivityLog);
+    activityLog.value = Array.isArray(parsedEntries)
+      ? parsedEntries
+          .map(normalizeActivityLogEntry)
+          .slice(0, ACTIVITY_LOG_LIMIT)
+      : [];
+  } catch (_) {
+    activityLog.value = [];
+  }
+};
+
+const appendActivityLogEntry = (entry) => {
+  const normalizedEntry = normalizeActivityLogEntry({
+    ...entry,
+    workspaceKey: entry?.workspaceKey || currentWorkspaceActivityKey.value,
+    timestamp: entry?.timestamp || new Date().toISOString(),
+  });
+
+  storeActivityLog([
+    normalizedEntry,
+    ...activityLog.value.filter(
+      (activityEntry) => activityEntry.id !== normalizedEntry.id,
+    ),
+  ]);
+};
+
 const normalizeSemanticQuerySettings = (value) => ({
   provider: value?.provider === "ollama" ? "ollama" : "openai",
   openaiBaseUrl:
@@ -2761,6 +2960,7 @@ const handleImportRecords = async () => {
     const isAddOnly = importMode.value === "add";
     const endpoint = isAddOnly ? "add" : "upsert";
     const successVerb = isAddOnly ? "Added" : "Upserted";
+    const importIds = recordsWithEmbeddings.map((record) => record.id);
 
     if (isAddOnly) {
       const existingIds = new Set(
@@ -2797,6 +2997,20 @@ const handleImportRecords = async () => {
       summary: "Import complete",
       detail: `${successVerb} ${formatNumber(recordsWithEmbeddings.length)} records${generatedEmbeddingCount ? ` with ${formatNumber(generatedEmbeddingCount)} auto-generated embedding${generatedEmbeddingCount === 1 ? "" : "s"}` : ""}.`,
       life: 5000,
+    });
+
+    appendActivityLogEntry({
+      type: "import",
+      title: `${successVerb} ${formatNumber(recordsWithEmbeddings.length)} ${pluralize(recordsWithEmbeddings.length, "row")}`,
+      description: `${successVerb} records into ${currentCollection.value.name}${generatedEmbeddingCount ? ` with ${formatNumber(generatedEmbeddingCount)} auto-generated embedding${generatedEmbeddingCount === 1 ? "" : "s"}` : ""}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: recordsWithEmbeddings.length,
+      rowIds: importIds,
+      meta: {
+        mode: importMode.value,
+        generatedEmbeddingCount,
+      },
     });
 
     resetImportState();
@@ -2935,6 +3149,16 @@ const saveEmbedding = async (id) => {
       summary: "Embedding updated",
       detail: `Vector values for ${id} were saved.`,
       life: 3500,
+    });
+
+    appendActivityLogEntry({
+      type: "embedding",
+      title: `Updated embedding for ${id}`,
+      description: `Saved a revised vector for ${id} in ${currentCollection.value.name}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: 1,
+      rowIds: [id],
     });
 
     cancelEmbeddingEdit(id);
@@ -3148,6 +3372,7 @@ const handleDisconnect = () => {
   resetCreateRecordState();
   resetImportState();
   showMetricsViewer.value = false;
+  showActivityLogViewer.value = false;
   metricsEmbeddingSummary.value = null;
 };
 
@@ -3390,6 +3615,16 @@ const handleCreateRecord = async () => {
       life: 4000,
     });
 
+    appendActivityLogEntry({
+      type: "create",
+      title: `Created row ${trimmedId}`,
+      description: `${trimmedId} was added to ${currentCollection.value.name}${wasAutoEmbedded ? ` with an auto-generated embedding from ${semanticProviderLabel.value}.` : "."}`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: 1,
+      rowIds: [trimmedId],
+    });
+
     resetCreateRecordState();
     await retrieveCollections();
   } catch (error) {
@@ -3587,6 +3822,25 @@ const onEmbeddingCellEditComplete = async (event) => {
         metadatas: [JSON.parse(embedding.metadata)],
       },
     );
+
+    appendActivityLogEntry({
+      type: "edit",
+      title:
+        event.field === "document"
+          ? `Edited document for ${embedding.id}`
+          : `Edited metadata for ${embedding.id}`,
+      description:
+        event.field === "document"
+          ? `Updated the document text for ${embedding.id} in ${currentCollection.value.name}.`
+          : `Updated the metadata for ${embedding.id} in ${currentCollection.value.name}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: 1,
+      rowIds: [embedding.id],
+      meta: {
+        field: event.field,
+      },
+    });
   } catch (error) {
     embedding.document = oldDocument;
     embedding.metadata = oldMetadata;
@@ -3731,6 +3985,21 @@ const deleteRowsByIds = async (
         `${formatNumber(ids.length)} ${pluralize(ids.length, "row")} removed from ${currentCollection.value.name}.`,
       life: 4000,
     });
+
+    appendActivityLogEntry({
+      type: "delete",
+      title:
+        ids.length === 1
+          ? `Deleted row ${ids[0]}`
+          : `Deleted ${formatNumber(ids.length)} rows`,
+      description:
+        successDetail ||
+        `${formatNumber(ids.length)} ${pluralize(ids.length, "row")} removed from ${currentCollection.value.name}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: ids.length,
+      rowIds: ids,
+    });
   } catch (error) {
     toast.add({
       severity: "error",
@@ -3849,6 +4118,27 @@ const applyBulkMetadata = async () => {
       summary: "Metadata updated",
       detail: `${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} ${nextMetadataEntries.length === 1 ? "was" : "were"} updated.`,
       life: 4000,
+    });
+
+    appendActivityLogEntry({
+      type: "metadata",
+      title:
+        bulkMetadataMode.value === "clear"
+          ? `Cleared metadata on ${formatNumber(nextMetadataEntries.length)} ${pluralize(nextMetadataEntries.length, "row")}`
+          : `Patched metadata on ${formatNumber(nextMetadataEntries.length)} ${pluralize(nextMetadataEntries.length, "row")}`,
+      description:
+        bulkMetadataMode.value === "merge"
+          ? `Merged metadata into ${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} in ${currentCollection.value.name}.`
+          : bulkMetadataMode.value === "replace"
+            ? `Replaced metadata on ${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} in ${currentCollection.value.name}.`
+            : `Cleared metadata on ${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} in ${currentCollection.value.name}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: nextMetadataEntries.length,
+      rowIds: nextMetadataEntries.map((entry) => entry.id),
+      meta: {
+        mode: bulkMetadataMode.value,
+      },
     });
 
     resetBulkMetadataState();
@@ -4497,18 +4787,26 @@ const exportCSV = async (includeEmbeddings = false) => {
                   >
                 </span>
               </button>
-            </div>
-          </div>
-        </div>
 
-        <div class="workspace-header__context">
-          <div class="info-pill">
-            <span>Endpoint</span>
-            <strong>{{ activeEndpoint }}</strong>
-          </div>
-          <div class="info-pill">
-            <span>Database</span>
-            <strong>{{ database }}</strong>
+              <button
+                class="workspace-activity-cta"
+                type="button"
+                @click="showActivityLogViewer = true"
+              >
+                <span class="workspace-activity-cta__icon">
+                  <i class="pi pi-history"></i>
+                </span>
+
+                <span class="workspace-activity-cta__copy">
+                  <small>Recent changes</small>
+                  <strong>Open Activity Log</strong>
+                  <span>
+                    Review deletes, imports, patches, and edits from this
+                    workspace.
+                  </span>
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -5078,6 +5376,111 @@ const exportCSV = async (includeEmbeddings = false) => {
       </section>
     </main>
   </div>
+
+  <Dialog
+    v-model:visible="showActivityLogViewer"
+    modal
+    :draggable="false"
+    class="activity-dialog"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Workspace activity</p>
+        <h2>Recent changes at a glance</h2>
+      </div>
+    </template>
+
+    <div class="activity-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="activity-panel__copy">
+            Review recent deletes, imports, metadata patches, and edits for the
+            current workspace.
+          </p>
+        </div>
+
+        <div class="query-panel__header-actions">
+          <span class="tag-chip">
+            {{
+              currentCollection
+                ? currentCollection.name
+                : `${tenant} / ${database}`
+            }}
+          </span>
+          <span class="tag-chip">
+            {{ formatNumber(currentWorkspaceActivityLog.length) }} events
+          </span>
+        </div>
+      </div>
+
+      <div class="metrics-card-grid activity-summary-grid">
+        <article
+          v-for="summaryCard in activityLogSummary"
+          :key="summaryCard.label"
+          class="metrics-summary-card"
+        >
+          <p class="section-kicker">{{ summaryCard.label }}</p>
+          <h3>{{ summaryCard.value }}</h3>
+          <p>{{ summaryCard.description }}</p>
+        </article>
+      </div>
+
+      <div v-if="currentWorkspaceActivityLog.length" class="activity-log-list">
+        <article
+          v-for="entry in currentWorkspaceActivityLog"
+          :key="entry.id"
+          class="activity-log-entry"
+        >
+          <div class="activity-log-entry__top">
+            <div class="activity-log-entry__icon">
+              <i :class="getActivityIcon(entry.type)"></i>
+            </div>
+
+            <div class="activity-log-entry__copy">
+              <p class="section-kicker">
+                {{ getActivityTypeLabel(entry.type) }}
+              </p>
+              <h3>{{ entry.title }}</h3>
+              <p>{{ entry.description }}</p>
+            </div>
+
+            <div class="activity-log-entry__meta">
+              <span class="activity-log-entry__time">{{
+                formatActivityTimestamp(entry.timestamp)
+              }}</span>
+              <strong>{{ entry.collectionName || "Workspace" }}</strong>
+            </div>
+          </div>
+
+          <div class="activity-log-entry__footer">
+            <div class="activity-log-entry__facts">
+              <span>
+                {{ formatNumber(entry.rowCount) }}
+                {{ pluralize(entry.rowCount, "row") }}
+              </span>
+              <span v-if="entry.meta?.mode">
+                {{ getActivityModeLabel(entry.meta.mode) }}
+              </span>
+              <span v-if="entry.rowIds.length">
+                IDs: {{ truncateText(entry.rowIds.join(", "), 96) }}
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div v-else class="activity-log-empty">
+        <div class="activity-log-empty__icon">
+          <i class="pi pi-history"></i>
+        </div>
+        <h3>No activity captured yet</h3>
+        <p>
+          Successful imports, deletes, metadata patches, and edits will appear
+          here once you start working in this workspace.
+        </p>
+      </div>
+    </div>
+  </Dialog>
 
   <Dialog
     v-model:visible="showBulkMetadataDialog"
