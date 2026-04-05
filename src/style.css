@@ -1212,6 +1212,7 @@ pre {
   border: 1px solid var(--stroke);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.03);
+  width: fit-content;
 }
 
 .query-mode-switch__button {
@@ -2492,6 +2493,10 @@ pre {
 .bulk-row-dialog__mode-switch .query-mode-switch__button {
   flex: 1 1 0;
   justify-content: center;
+}
+
+.query-mode-switch.bulk-row-dialog__mode-switch {
+  width: 100%;
 }
 
 .bulk-row-dialog__notice {
