@@ -151,6 +151,7 @@ const QUERY_HISTORY_LIMIT = 10;
 const SEMANTIC_QUERY_SETTINGS_STORAGE_KEY = "semantic_query_settings";
 const WORKSPACE_HEALTH_CHECK_INTERVAL = 15000;
 const WORKSPACE_HEALTH_CHECK_TIMEOUT = 5000;
+const AUDIT_ZERO_NORM_THRESHOLD = 1e-9;
 const METADATA_FILTER_OPERATORS = [
   { label: "Equals", value: "equals" },
   { label: "Contains", value: "contains" },
@@ -354,6 +355,21 @@ const countWords = (value) => {
   if (!normalizedValue) return 0;
 
   return normalizedValue.split(/\s+/).length;
+};
+
+const pluralize = (count, singular, plural = `${singular}s`) => {
+  return count === 1 ? singular : plural;
+};
+
+const getMetadataValueType = (value) => {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+
+  return typeof value;
+};
+
+const normalizeDocumentFingerprint = (value) => {
+  return `${value ?? ""}`.trim().replace(/\s+/g, " ").toLowerCase();
 };
 
 const truncateText = (value, limit = 80) => {
@@ -751,6 +767,418 @@ const collectionMetricCards = computed(() => {
       description: `${collectionMetrics.value.averageCharacterCountLabel} characters on average.`,
     },
   ];
+});
+
+const collectionQualityAudit = computed(() => {
+  const totalRows = currentCollectionData.value.length;
+  const findings = [];
+  const severityRank = {
+    high: 0,
+    medium: 1,
+    low: 2,
+    info: 3,
+  };
+  const addFinding = ({
+    severity,
+    category,
+    title,
+    description,
+    hint = "",
+    count = 0,
+  }) => {
+    findings.push({
+      severity,
+      severityLabel:
+        severity === "high"
+          ? "High"
+          : severity === "medium"
+            ? "Review"
+            : severity === "low"
+              ? "Watch"
+              : "Info",
+      category,
+      title,
+      description,
+      hint,
+      count,
+    });
+  };
+
+  if (!totalRows) {
+    return {
+      statusLabel: "Awaiting rows",
+      statusTone: "idle",
+      summaryCards: [
+        {
+          label: "Audit status",
+          value: "Awaiting rows",
+          description:
+            "Open a non-empty collection to audit content, metadata, and embeddings.",
+          valueClass: "quality-audit-status quality-audit-status--idle",
+        },
+        {
+          label: "Findings",
+          value: "0",
+          description: "No rows are loaded yet.",
+        },
+        {
+          label: "Rows checked",
+          value: "0",
+          description: "Content and metadata checks use all loaded rows.",
+        },
+        {
+          label: "Embedding sample",
+          value: "Pending",
+          description: "Embedding checks start after the metrics sample loads.",
+        },
+      ],
+      findings: [],
+      emptyStateMessage:
+        "Open a collection with rows to audit content, metadata, and embeddings.",
+      pendingEmbeddingChecks: false,
+      pendingMessage: "",
+    };
+  }
+
+  let rowsWithoutDocuments = 0;
+  let rowsWithoutMetadata = 0;
+  let rowsWithNonObjectMetadata = 0;
+  let rowsWithEmptyMetadataObjects = 0;
+  const documentGroups = new Map();
+  const metadataTypeGroups = new Map();
+
+  for (const row of currentCollectionData.value) {
+    const documentText = `${row.document ?? ""}`.trim();
+    const metadataValue = parseMetadataValue(row.metadata);
+
+    if (!documentText) {
+      rowsWithoutDocuments += 1;
+    } else {
+      const documentFingerprint = normalizeDocumentFingerprint(documentText);
+      const existingDocumentGroup = documentGroups.get(documentFingerprint) ?? {
+        preview: documentText,
+        ids: [],
+      };
+
+      existingDocumentGroup.ids.push(row.id);
+      documentGroups.set(documentFingerprint, existingDocumentGroup);
+    }
+
+    if (metadataValue === null) {
+      rowsWithoutMetadata += 1;
+      continue;
+    }
+
+    if (typeof metadataValue !== "object" || Array.isArray(metadataValue)) {
+      rowsWithNonObjectMetadata += 1;
+      continue;
+    }
+
+    const metadataKeys = Object.keys(metadataValue);
+
+    if (!metadataKeys.length) {
+      rowsWithEmptyMetadataObjects += 1;
+      continue;
+    }
+
+    for (const key of metadataKeys) {
+      const existingTypeGroup = metadataTypeGroups.get(key) ?? {
+        count: 0,
+        types: new Set(),
+      };
+
+      existingTypeGroup.count += 1;
+      existingTypeGroup.types.add(getMetadataValueType(metadataValue[key]));
+      metadataTypeGroups.set(key, existingTypeGroup);
+    }
+  }
+
+  const duplicateDocumentGroups = Array.from(documentGroups.values())
+    .filter((group) => group.ids.length > 1)
+    .map((group) => ({
+      ...group,
+      count: group.ids.length,
+    }))
+    .sort((leftGroup, rightGroup) => rightGroup.count - leftGroup.count);
+  const duplicateDocumentRows = duplicateDocumentGroups.reduce(
+    (total, group) => total + group.count,
+    0,
+  );
+  const metadataTypeConflicts = Array.from(metadataTypeGroups.entries())
+    .map(([key, group]) => ({
+      key,
+      count: group.count,
+      types: Array.from(group.types).sort(),
+    }))
+    .filter((group) => group.types.length > 1)
+    .sort((leftGroup, rightGroup) => {
+      if (rightGroup.types.length !== leftGroup.types.length) {
+        return rightGroup.types.length - leftGroup.types.length;
+      }
+
+      if (rightGroup.count !== leftGroup.count) {
+        return rightGroup.count - leftGroup.count;
+      }
+
+      return leftGroup.key.localeCompare(rightGroup.key);
+    });
+
+  if (rowsWithoutDocuments === totalRows) {
+    addFinding({
+      severity: "high",
+      category: "Content coverage",
+      title: "No document text stored",
+      description: `All ${formatNumber(totalRows)} loaded ${pluralize(totalRows, "row")} are missing document text. Working only from vectors makes manual inspection and retrieval debugging much harder.`,
+      hint: "Add document text to make the collection easier to validate and debug.",
+      count: rowsWithoutDocuments,
+    });
+  } else if (rowsWithoutDocuments > 0) {
+    addFinding({
+      severity: rowsWithoutDocuments / totalRows >= 0.3 ? "medium" : "low",
+      category: "Content coverage",
+      title: "Some rows are missing documents",
+      description: `${formatNumber(rowsWithoutDocuments)} of ${formatNumber(totalRows)} loaded rows (${formatPercentage(rowsWithoutDocuments, totalRows)}) have no document text.`,
+      hint: "Rows without documents are harder to validate manually and harder to compare during retrieval review.",
+      count: rowsWithoutDocuments,
+    });
+  }
+
+  if (rowsWithNonObjectMetadata > 0) {
+    addFinding({
+      severity: rowsWithNonObjectMetadata / totalRows >= 0.2 ? "medium" : "low",
+      category: "Metadata shape",
+      title: "Non-object metadata values detected",
+      description: `${formatNumber(rowsWithNonObjectMetadata)} ${pluralize(rowsWithNonObjectMetadata, "row")} store metadata as arrays or primitive values instead of JSON objects.`,
+      hint: "Metadata filters and schema expectations work best when rows use JSON-shaped metadata or null.",
+      count: rowsWithNonObjectMetadata,
+    });
+  }
+
+  if (rowsWithoutMetadata === totalRows) {
+    addFinding({
+      severity: "medium",
+      category: "Metadata coverage",
+      title: "No metadata stored",
+      description: `None of the ${formatNumber(totalRows)} loaded rows include metadata. That limits filtering, faceting, and operational tracing.`,
+      hint: "Even a few stable metadata fields can make filtering, exports, and audits much easier.",
+      count: rowsWithoutMetadata,
+    });
+  } else if (rowsWithoutMetadata / totalRows >= 0.25) {
+    addFinding({
+      severity: "low",
+      category: "Metadata coverage",
+      title: "Metadata is sparse",
+      description: `${formatNumber(rowsWithoutMetadata)} of ${formatNumber(totalRows)} loaded rows (${formatPercentage(rowsWithoutMetadata, totalRows)}) have no metadata at all.`,
+      hint: "Even a few stable metadata fields can make filtering, exports, and audits much easier.",
+      count: rowsWithoutMetadata,
+    });
+  }
+
+  if (rowsWithEmptyMetadataObjects > 0) {
+    addFinding({
+      severity: "low",
+      category: "Metadata coverage",
+      title: "Empty metadata objects are present",
+      description: `${formatNumber(rowsWithEmptyMetadataObjects)} ${pluralize(rowsWithEmptyMetadataObjects, "row")} store empty metadata objects with no keys.`,
+      hint: "Use null when metadata is intentionally absent.",
+      count: rowsWithEmptyMetadataObjects,
+    });
+  }
+
+  if (duplicateDocumentGroups.length) {
+    const duplicatePreview = duplicateDocumentGroups
+      .slice(0, 2)
+      .map(
+        (group) =>
+          `"${truncateText(group.preview, 38)}" (${formatNumber(group.count)} ${pluralize(group.count, "row")})`,
+      )
+      .join(" · ");
+
+    addFinding({
+      severity: duplicateDocumentRows / totalRows >= 0.15 ? "medium" : "low",
+      category: "Content duplication",
+      title: "Possible duplicate document chunks",
+      description: `${formatNumber(duplicateDocumentRows)} rows fall into ${formatNumber(duplicateDocumentGroups.length)} exact-text duplicate ${pluralize(duplicateDocumentGroups.length, "group")}. Example: ${duplicatePreview}.`,
+      hint: "If these rows are meant to be separate, consider adding distinguishing metadata or document text. If they are duplicates, consider deduplication to save storage and improve retrieval quality.",
+      count: duplicateDocumentRows,
+    });
+  }
+
+  if (metadataTypeConflicts.length) {
+    const conflictPreview = metadataTypeConflicts
+      .slice(0, 3)
+      .map((group) => `${group.key} (${group.types.join(", ")})`)
+      .join("; ");
+
+    addFinding({
+      severity: metadataTypeConflicts.length >= 3 ? "medium" : "low",
+      category: "Metadata consistency",
+      title: "Metadata type drift detected",
+      description: `${formatNumber(metadataTypeConflicts.length)} metadata ${pluralize(metadataTypeConflicts.length, "key")} use mixed value types across rows. Examples: ${conflictPreview}.`,
+      hint: "Keep each metadata key stable across the collection, such as always string, always number, or always boolean.",
+      count: metadataTypeConflicts.length,
+    });
+  }
+
+  const embeddingSummary = metricsEmbeddingSummary.value;
+  const pendingEmbeddingChecks = Boolean(
+    totalRows && isLoadingMetricsEmbeddings.value,
+  );
+
+  if (embeddingSummary) {
+    if (!embeddingSummary.returnedVectors) {
+      addFinding({
+        severity: "high",
+        category: "Embedding coverage",
+        title: "Sample returned no embeddings",
+        description: `None of the ${formatNumber(embeddingSummary.sampleSize)} sampled rows returned an embedding vector.`,
+        hint: "Backfill embeddings for existing rows or verify whether the collection is meant to store document-only records.",
+        count: embeddingSummary.sampleSize,
+      });
+    } else {
+      if (embeddingSummary.missingVectors > 0) {
+        addFinding({
+          severity:
+            embeddingSummary.missingVectors / embeddingSummary.sampleSize >=
+            0.25
+              ? "high"
+              : "medium",
+          category: "Embedding coverage",
+          title: "Sampled rows are missing embeddings",
+          description: `${formatNumber(embeddingSummary.missingVectors)} of ${formatNumber(embeddingSummary.sampleSize)} sampled rows (${formatPercentage(embeddingSummary.missingVectors, embeddingSummary.sampleSize)}) returned no embedding vector.`,
+          hint: "Backfill missing embeddings or verify whether some rows are intentionally document-only.",
+          count: embeddingSummary.missingVectors,
+        });
+      }
+
+      if (embeddingSummary.dimensionBreakdown.length > 1) {
+        const dimensionPreview = embeddingSummary.dimensionBreakdown
+          .slice(0, 3)
+          .map(
+            (dimensionStat) =>
+              `${formatNumber(dimensionStat.dimension)} dims (${dimensionStat.coverageLabel})`,
+          )
+          .join(" · ");
+
+        addFinding({
+          severity: "high",
+          category: "Embedding consistency",
+          title: "Mixed embedding dimensions in sample",
+          description: `The sampled embeddings do not share one vector size. Observed dimensions: ${dimensionPreview}.`,
+          hint: "A single collection should usually use one embedding model and one dimension size.",
+          count: embeddingSummary.dimensionBreakdown.length,
+        });
+      }
+
+      if (embeddingSummary.zeroNormVectors > 0) {
+        addFinding({
+          severity:
+            embeddingSummary.zeroNormVectors /
+              embeddingSummary.returnedVectors >=
+            0.25
+              ? "medium"
+              : "low",
+          category: "Embedding health",
+          title: "Zero-norm embeddings detected",
+          description: `${formatNumber(embeddingSummary.zeroNormVectors)} sampled ${pluralize(embeddingSummary.zeroNormVectors, "vector")} ${embeddingSummary.zeroNormVectors === 1 ? "has" : "have"} a norm of 0.`,
+          hint: "Zero-norm vectors have no direction and may indicate issues with the embedding model or the input data.",
+          count: embeddingSummary.zeroNormVectors,
+        });
+      }
+    }
+  }
+
+  findings.sort((leftFinding, rightFinding) => {
+    if (
+      severityRank[leftFinding.severity] !== severityRank[rightFinding.severity]
+    ) {
+      return (
+        severityRank[leftFinding.severity] - severityRank[rightFinding.severity]
+      );
+    }
+
+    if ((rightFinding.count ?? 0) !== (leftFinding.count ?? 0)) {
+      return (rightFinding.count ?? 0) - (leftFinding.count ?? 0);
+    }
+
+    return leftFinding.title.localeCompare(rightFinding.title);
+  });
+
+  const highFindings = findings.filter(
+    (finding) => finding.severity === "high",
+  ).length;
+  const reviewFindings = findings.filter(
+    (finding) => finding.severity === "medium",
+  ).length;
+  const watchFindings = findings.filter(
+    (finding) => finding.severity === "low",
+  ).length;
+
+  let statusLabel = "Healthy";
+  let statusTone = "healthy";
+  let statusDescription =
+    "No issues were detected in the loaded rows and sampled embeddings.";
+
+  if (pendingEmbeddingChecks && !findings.length) {
+    statusLabel = "Auditing";
+    statusTone = "idle";
+    statusDescription = `Content and metadata checks are ready while embeddings sample up to ${formatNumber(METRICS_EMBEDDING_SAMPLE_SIZE)} rows.`;
+  } else if (highFindings > 0) {
+    statusLabel = "Needs attention";
+    statusTone = "high";
+    statusDescription = `${formatNumber(highFindings)} high-severity ${pluralize(highFindings, "issue")} should be fixed first.`;
+  } else if (findings.length > 0) {
+    statusLabel = "Needs review";
+    statusTone = "medium";
+    statusDescription = `${formatNumber(findings.length)} ${pluralize(findings.length, "finding")} were detected across content, metadata, or sampled embeddings.`;
+  }
+
+  return {
+    statusLabel,
+    statusTone,
+    summaryCards: [
+      {
+        label: "Audit status",
+        value: statusLabel,
+        description: statusDescription,
+        valueClass: `quality-audit-status quality-audit-status--${statusTone}`,
+      },
+      {
+        label: "Findings",
+        value: formatNumber(findings.length),
+        description: findings.length
+          ? `${formatNumber(highFindings)} high, ${formatNumber(reviewFindings)} review, ${formatNumber(watchFindings)} watch ${pluralize(watchFindings, "item")}.`
+          : "No findings have been detected so far.",
+      },
+      {
+        label: "Rows checked",
+        value: formatNumber(totalRows),
+        description:
+          "Content and metadata checks use every loaded row in the current collection.",
+      },
+      {
+        label: "Embedding sample",
+        value: pendingEmbeddingChecks
+          ? "Sampling"
+          : embeddingSummary
+            ? formatNumber(embeddingSummary.sampleSize)
+            : "Pending",
+        description: pendingEmbeddingChecks
+          ? `Checking up to ${formatNumber(METRICS_EMBEDDING_SAMPLE_SIZE)} rows for missing or inconsistent vectors.`
+          : embeddingSummary
+            ? `${formatNumber(embeddingSummary.returnedVectors)} vectors returned in the sample.`
+            : "Embedding checks start after the metrics sample loads.",
+      },
+    ],
+    findings,
+    emptyStateMessage: findings.length
+      ? ""
+      : "No audit findings detected in the loaded rows and sampled embeddings.",
+    pendingEmbeddingChecks,
+    pendingMessage: pendingEmbeddingChecks
+      ? "Embedding checks are still running and may add more findings when the sample finishes loading."
+      : "",
+  };
 });
 
 const dashboardMetrics = computed(() => {
@@ -1427,6 +1855,9 @@ const loadMetricsEmbeddingSummary = async () => {
     let returnedVectors = 0;
     let missingVectors = 0;
     let normTotal = 0;
+    let zeroNormVectors = 0;
+    let minNorm = Infinity;
+    let maxNorm = 0;
 
     for (const embedding of embeddings) {
       if (!Array.isArray(embedding) || !embedding.length) {
@@ -1442,7 +1873,15 @@ const loadMetricsEmbeddingSummary = async () => {
         embedding.reduce((total, value) => total + value * value, 0),
       );
       normTotal += norm;
+      minNorm = Math.min(minNorm, norm);
+      maxNorm = Math.max(maxNorm, norm);
+
+      if (norm <= AUDIT_ZERO_NORM_THRESHOLD) {
+        zeroNormVectors += 1;
+      }
     }
+
+    missingVectors += Math.max(0, sampledRows.length - embeddings.length);
 
     const dimensionBreakdown = Object.entries(dimensionCounts)
       .map(([dimension, count]) => ({
@@ -1460,6 +1899,9 @@ const loadMetricsEmbeddingSummary = async () => {
       averageNormLabel: returnedVectors
         ? formatEmbeddingNumber(normTotal / returnedVectors)
         : "n/a",
+      minNormLabel: returnedVectors ? formatEmbeddingNumber(minNorm) : "n/a",
+      maxNormLabel: returnedVectors ? formatEmbeddingNumber(maxNorm) : "n/a",
+      zeroNormVectors,
       consistencyLabel: !returnedVectors
         ? "No embeddings returned in the sample."
         : dimensionBreakdown.length === 1 && !missingVectors
@@ -4219,6 +4661,79 @@ const exportCSV = async (includeEmbeddings = false) => {
         </article>
       </div>
 
+      <article
+        class="metrics-section metrics-section--full quality-audit-section"
+      >
+        <div class="metrics-section__header">
+          <div>
+            <p class="section-kicker">Collection quality audit</p>
+            <h3>Flag ingestion and consistency issues</h3>
+          </div>
+
+          <span class="metrics-section__eyebrow">
+            {{ collectionQualityAudit.statusLabel }}
+          </span>
+        </div>
+
+        <div class="metrics-card-grid quality-audit-summary">
+          <article
+            v-for="summaryCard in collectionQualityAudit.summaryCards"
+            :key="summaryCard.label"
+            class="metrics-summary-card quality-audit-card"
+          >
+            <p class="section-kicker">{{ summaryCard.label }}</p>
+            <h3 :class="summaryCard.valueClass">{{ summaryCard.value }}</h3>
+            <p>{{ summaryCard.description }}</p>
+          </article>
+        </div>
+
+        <div
+          v-if="collectionQualityAudit.pendingMessage"
+          class="quality-audit-pending"
+        >
+          <i class="pi pi-spin pi-spinner"></i>
+          <span>{{ collectionQualityAudit.pendingMessage }}</span>
+        </div>
+
+        <div
+          v-if="collectionQualityAudit.findings.length"
+          class="quality-audit-list"
+        >
+          <article
+            v-for="finding in collectionQualityAudit.findings"
+            :key="`${finding.category}-${finding.title}`"
+            class="quality-audit-finding"
+            :class="`quality-audit-finding--${finding.severity}`"
+          >
+            <div class="quality-audit-finding__top">
+              <div>
+                <p class="section-kicker">{{ finding.category }}</p>
+                <h3>{{ finding.title }}</h3>
+              </div>
+
+              <span
+                class="quality-audit-pill"
+                :class="`quality-audit-pill--${finding.severity}`"
+              >
+                {{ finding.severityLabel }}
+              </span>
+            </div>
+
+            <p class="quality-audit-finding__description">
+              {{ finding.description }}
+            </p>
+
+            <p v-if="finding.hint" class="quality-audit-finding__hint">
+              {{ finding.hint }}
+            </p>
+          </article>
+        </div>
+
+        <p v-else class="metrics-empty-copy quality-audit-empty">
+          {{ collectionQualityAudit.emptyStateMessage }}
+        </p>
+      </article>
+
       <div class="metrics-grid">
         <article class="metrics-section">
           <div class="metrics-section__header">
@@ -4347,7 +4862,9 @@ const exportCSV = async (includeEmbeddings = false) => {
             <p class="section-kicker">Average norm</p>
             <h3>{{ metricsEmbeddingSummary.averageNormLabel }}</h3>
             <p>
-              Based on {{ formatNumber(metricsEmbeddingSummary.sampleSize) }}
+              Norm range {{ metricsEmbeddingSummary.minNormLabel }} to
+              {{ metricsEmbeddingSummary.maxNormLabel }}
+              across {{ formatNumber(metricsEmbeddingSummary.sampleSize) }}
               sampled rows.
             </p>
           </article>
