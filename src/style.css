@@ -3166,6 +3166,118 @@ pre {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.activity-log-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+
+.activity-log-entry__details {
+  display: grid;
+  gap: 0.9rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.activity-log-entry__details-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.activity-log-entry__details-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.activity-detail-section {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.activity-detail-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.activity-detail-section__header strong {
+  font-size: 0.96rem;
+}
+
+.activity-detail-section__changes {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.activity-detail-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.activity-detail-card__label {
+  margin-bottom: 0;
+}
+
+.activity-detail-card__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.activity-detail-card__grid--single {
+  grid-template-columns: 1fr;
+}
+
+.activity-detail-card__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.activity-detail-card__column-label {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-detail-card__value {
+  flex: 1;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.9rem;
+  background: rgba(4, 18, 28, 0.7);
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+
 .activity-log-empty {
   display: grid;
   gap: 0.75rem;
@@ -3918,6 +4030,7 @@ pre {
   .metrics-grid,
   .metrics-embedding-grid,
   .activity-summary-grid,
+  .activity-detail-card__grid,
   .query-results-grid,
   .embedding-dialog__grid {
     grid-template-columns: 1fr;

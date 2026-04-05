@@ -91,6 +91,7 @@ const showQueryViewer = ref(false);
 const showImportViewer = ref(false);
 const showMetricsViewer = ref(false);
 const showActivityLogViewer = ref(false);
+const expandedActivityEntries = ref({});
 const showImportAutoEmbedSettings = ref(false);
 const showCreateRecordAutoEmbedSettings = ref(false);
 const bulkMetadataMode = ref("merge");
@@ -159,6 +160,9 @@ const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
 const ACTIVITY_LOG_LIMIT = 50;
 const ACTIVITY_LOG_ID_PREVIEW_LIMIT = 20;
+const ACTIVITY_LOG_DETAIL_SECTION_LIMIT = 8;
+const ACTIVITY_LOG_DETAIL_VALUE_LIMIT = 1800;
+const ACTIVITY_LOG_EMBEDDING_PREVIEW_COUNT = 12;
 const ACTIVITY_LOG_STORAGE_KEY = "activity_log";
 const SEMANTIC_QUERY_SETTINGS_STORAGE_KEY = "semantic_query_settings";
 const WORKSPACE_HEALTH_CHECK_INTERVAL = 15000;
@@ -1577,6 +1581,185 @@ const retrieveQueryHistory = () => {
   }
 };
 
+const trimActivityDetailText = (value) => {
+  const normalizedValue = `${value ?? ""}`;
+
+  if (!normalizedValue) return "";
+
+  return normalizedValue.length > ACTIVITY_LOG_DETAIL_VALUE_LIMIT
+    ? `${normalizedValue.slice(0, ACTIVITY_LOG_DETAIL_VALUE_LIMIT)}\n…`
+    : normalizedValue;
+};
+
+const buildActivityDetailValue = (value, format = "text") => {
+  if (value === undefined) return "";
+
+  if (format === "json") {
+    return trimActivityDetailText(safeStringify(value, true));
+  }
+
+  if (format === "embedding") {
+    if (!Array.isArray(value) || !value.length) {
+      return "[]";
+    }
+
+    const previewValues = value
+      .slice(0, ACTIVITY_LOG_EMBEDDING_PREVIEW_COUNT)
+      .map((entry) => formatEmbeddingNumber(entry));
+
+    return trimActivityDetailText(
+      `dims: ${formatNumber(value.length)}\n[${previewValues.join(", ")}${value.length > ACTIVITY_LOG_EMBEDDING_PREVIEW_COUNT ? ", …" : ""}]`,
+    );
+  }
+
+  if (value === null) {
+    return "null";
+  }
+
+  const normalizedValue = `${value ?? ""}`;
+  return trimActivityDetailText(
+    normalizedValue.length ? normalizedValue : "(empty)",
+  );
+};
+
+const buildActivityDetailChange = ({
+  label,
+  before,
+  after,
+  format = "text",
+}) => {
+  return {
+    label: `${label ?? ""}`.trim(),
+    before: buildActivityDetailValue(before, format),
+    after: buildActivityDetailValue(after, format),
+    format: format === "json" || format === "embedding" ? format : "text",
+  };
+};
+
+const buildActivityRecordSnapshot = (record) => {
+  if (!record) return null;
+
+  const snapshot = {
+    id: `${record?.id ?? ""}`.trim(),
+  };
+
+  if (hasRecordField(record, "document")) {
+    snapshot.document = `${record?.document ?? ""}`;
+  }
+
+  if (hasRecordField(record, "metadata")) {
+    snapshot.metadata = parseMetadataValue(record?.metadata);
+  }
+
+  if (hasRecordField(record, "embedding")) {
+    snapshot.embedding = Array.isArray(record?.embedding)
+      ? record.embedding.filter(
+          (value) => typeof value === "number" && Number.isFinite(value),
+        )
+      : [];
+  }
+
+  return snapshot;
+};
+
+const buildActivityRecordDetailSection = ({
+  title,
+  beforeRecord = null,
+  afterRecord = null,
+  fields = ["document", "metadata", "embedding"],
+}) => {
+  const changes = [];
+
+  if (
+    fields.includes("document") &&
+    ((beforeRecord && hasRecordField(beforeRecord, "document")) ||
+      (afterRecord && hasRecordField(afterRecord, "document")))
+  ) {
+    changes.push(
+      buildActivityDetailChange({
+        label: "Document",
+        before: beforeRecord?.document,
+        after: afterRecord?.document,
+      }),
+    );
+  }
+
+  if (
+    fields.includes("metadata") &&
+    ((beforeRecord && hasRecordField(beforeRecord, "metadata")) ||
+      (afterRecord && hasRecordField(afterRecord, "metadata")))
+  ) {
+    changes.push(
+      buildActivityDetailChange({
+        label: "Metadata",
+        before: beforeRecord?.metadata,
+        after: afterRecord?.metadata,
+        format: "json",
+      }),
+    );
+  }
+
+  if (
+    fields.includes("embedding") &&
+    ((beforeRecord && hasRecordField(beforeRecord, "embedding")) ||
+      (afterRecord && hasRecordField(afterRecord, "embedding")))
+  ) {
+    changes.push(
+      buildActivityDetailChange({
+        label: "Embedding",
+        before: beforeRecord?.embedding,
+        after: afterRecord?.embedding,
+        format: "embedding",
+      }),
+    );
+  }
+
+  return {
+    title:
+      `${title ?? beforeRecord?.id ?? afterRecord?.id ?? "Record"}`.trim() ||
+      "Record",
+    changes,
+  };
+};
+
+const normalizeActivityDetailChange = (change) => {
+  const normalizedLabel = `${change?.label ?? ""}`.trim();
+  const before = trimActivityDetailText(change?.before);
+  const after = trimActivityDetailText(change?.after);
+
+  if (!normalizedLabel || (!before && !after)) {
+    return null;
+  }
+
+  return {
+    label: normalizedLabel,
+    before,
+    after,
+    format:
+      change?.format === "json" || change?.format === "embedding"
+        ? change.format
+        : "text",
+  };
+};
+
+const normalizeActivityDetailSection = (section) => {
+  const changes = Array.isArray(section?.changes)
+    ? section.changes
+        .map(normalizeActivityDetailChange)
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+
+  if (!changes.length) {
+    return null;
+  }
+
+  return {
+    title: `${section?.title ?? "Record"}`.trim() || "Record",
+    changes,
+  };
+};
+
 const normalizeActivityLogEntry = (entry) => {
   return {
     id:
@@ -1596,6 +1779,13 @@ const normalizeActivityLogEntry = (entry) => {
           .filter(Boolean)
           .slice(0, ACTIVITY_LOG_ID_PREVIEW_LIMIT)
       : [],
+    details: Array.isArray(entry?.details)
+      ? entry.details
+          .map(normalizeActivityDetailSection)
+          .filter(Boolean)
+          .slice(0, ACTIVITY_LOG_DETAIL_SECTION_LIMIT)
+      : [],
+    detailsOverflowCount: Math.max(0, Number(entry?.detailsOverflowCount) || 0),
     meta:
       entry?.meta && typeof entry.meta === "object" ? { ...entry.meta } : {},
   };
@@ -1727,14 +1917,43 @@ const getActivityModeLabel = (mode) => {
   }
 };
 
+const hasActivityDetails = (entry) => {
+  return Array.isArray(entry?.details) && entry.details.length > 0;
+};
+
+const isActivityEntryExpanded = (entryId) => {
+  return Boolean(expandedActivityEntries.value[entryId]);
+};
+
+const toggleActivityEntry = (entryId) => {
+  if (!entryId) return;
+
+  expandedActivityEntries.value = {
+    ...expandedActivityEntries.value,
+    [entryId]: !expandedActivityEntries.value[entryId],
+  };
+};
+
 const storeActivityLog = (entries) => {
-  const nextEntries = entries.slice(0, ACTIVITY_LOG_LIMIT);
+  let nextEntries = entries.slice(0, ACTIVITY_LOG_LIMIT);
   activityLog.value = nextEntries;
 
-  try {
-    localStorage.setItem(ACTIVITY_LOG_STORAGE_KEY, JSON.stringify(nextEntries));
-  } catch (_) {
-    // Ignore storage failures so the in-memory timeline still works.
+  while (true) {
+    try {
+      localStorage.setItem(
+        ACTIVITY_LOG_STORAGE_KEY,
+        JSON.stringify(nextEntries),
+      );
+      activityLog.value = nextEntries;
+      return;
+    } catch (_) {
+      if (nextEntries.length <= 1) {
+        activityLog.value = nextEntries.slice(0, 1);
+        return;
+      }
+
+      nextEntries = nextEntries.slice(0, -1);
+    }
   }
 };
 
@@ -2999,6 +3218,15 @@ const handleImportRecords = async () => {
       life: 5000,
     });
 
+    const importDetails = recordsWithEmbeddings
+      .slice(0, ACTIVITY_LOG_DETAIL_SECTION_LIMIT)
+      .map((record) =>
+        buildActivityRecordDetailSection({
+          title: record.id,
+          afterRecord: buildActivityRecordSnapshot(record),
+        }),
+      );
+
     appendActivityLogEntry({
       type: "import",
       title: `${successVerb} ${formatNumber(recordsWithEmbeddings.length)} ${pluralize(recordsWithEmbeddings.length, "row")}`,
@@ -3007,6 +3235,11 @@ const handleImportRecords = async () => {
       collectionName: currentCollection.value.name,
       rowCount: recordsWithEmbeddings.length,
       rowIds: importIds,
+      details: importDetails,
+      detailsOverflowCount: Math.max(
+        0,
+        recordsWithEmbeddings.length - importDetails.length,
+      ),
       meta: {
         mode: importMode.value,
         generatedEmbeddingCount,
@@ -3104,6 +3337,9 @@ const saveEmbedding = async (id) => {
   if (!currentCollection.value || isSavingEmbedding(id)) return;
 
   const currentPreview = getEmbeddingPreview(id);
+  const previousEmbedding = Array.isArray(embeddingVectorCache.value[id])
+    ? [...embeddingVectorCache.value[id]]
+    : undefined;
   let parsedEmbedding;
 
   try {
@@ -3159,6 +3395,22 @@ const saveEmbedding = async (id) => {
       collectionName: currentCollection.value.name,
       rowCount: 1,
       rowIds: [id],
+      details: [
+        buildActivityRecordDetailSection({
+          title: id,
+          beforeRecord: buildActivityRecordSnapshot({
+            id,
+            ...(Array.isArray(previousEmbedding)
+              ? { embedding: previousEmbedding }
+              : {}),
+          }),
+          afterRecord: buildActivityRecordSnapshot({
+            id,
+            embedding: parsedEmbedding,
+          }),
+          fields: ["embedding"],
+        }),
+      ],
     });
 
     cancelEmbeddingEdit(id);
@@ -3373,6 +3625,7 @@ const handleDisconnect = () => {
   resetImportState();
   showMetricsViewer.value = false;
   showActivityLogViewer.value = false;
+  expandedActivityEntries.value = {};
   metricsEmbeddingSummary.value = null;
 };
 
@@ -3623,6 +3876,12 @@ const handleCreateRecord = async () => {
       collectionName: currentCollection.value.name,
       rowCount: 1,
       rowIds: [trimmedId],
+      details: [
+        buildActivityRecordDetailSection({
+          title: trimmedId,
+          afterRecord: buildActivityRecordSnapshot(preparedRecord),
+        }),
+      ],
     });
 
     resetCreateRecordState();
@@ -3813,13 +4072,17 @@ const onEmbeddingCellEditComplete = async (event) => {
     embedding.metadata = event.newValue;
   }
 
+  const parsedMetadataForUpdate = parseMetadataValue(embedding.metadata);
+  const parsedNewMetadata =
+    event.field === "metadata" ? JSON.parse(embedding.metadata) : undefined;
+
   try {
     await axios.post(
       `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
       {
         documents: [embedding.document],
         ids: [embedding.id],
-        metadatas: [JSON.parse(embedding.metadata)],
+        metadatas: [parsedMetadataForUpdate],
       },
     );
 
@@ -3837,6 +4100,22 @@ const onEmbeddingCellEditComplete = async (event) => {
       collectionName: currentCollection.value.name,
       rowCount: 1,
       rowIds: [embedding.id],
+      details: [
+        buildActivityRecordDetailSection({
+          title: embedding.id,
+          beforeRecord: buildActivityRecordSnapshot({
+            id: embedding.id,
+            document: oldDocument,
+            metadata: oldMetadata,
+          }),
+          afterRecord: buildActivityRecordSnapshot({
+            id: embedding.id,
+            document: embedding.document,
+            metadata: parsedNewMetadata,
+          }),
+          fields: [event.field],
+        }),
+      ],
       meta: {
         field: event.field,
       },
@@ -3963,6 +4242,19 @@ const deleteRowsByIds = async (
     return;
   }
 
+  const deletedRowSnapshots = ids
+    .map((id) => {
+      const row = currentCollectionData.value.find((entry) => entry.id === id);
+      if (!row) return null;
+
+      return buildActivityRecordSnapshot({
+        ...row,
+        ...(Array.isArray(embeddingVectorCache.value[id])
+          ? { embedding: embeddingVectorCache.value[id] }
+          : {}),
+      });
+    })
+    .filter(Boolean);
   isDeletingRows.value = true;
 
   try {
@@ -3999,6 +4291,18 @@ const deleteRowsByIds = async (
       collectionName: currentCollection.value.name,
       rowCount: ids.length,
       rowIds: ids,
+      details: deletedRowSnapshots
+        .slice(0, ACTIVITY_LOG_DETAIL_SECTION_LIMIT)
+        .map((snapshot) =>
+          buildActivityRecordDetailSection({
+            title: snapshot.id,
+            beforeRecord: snapshot,
+          }),
+        ),
+      detailsOverflowCount: Math.max(
+        0,
+        deletedRowSnapshots.length - ACTIVITY_LOG_DETAIL_SECTION_LIMIT,
+      ),
     });
   } catch (error) {
     toast.add({
@@ -4085,6 +4389,9 @@ const applyBulkMetadata = async () => {
       metadataLabel: safeStringify(nextMetadata),
     };
   });
+  const nextMetadataValueMap = new Map(
+    nextMetadataEntries.map((entry) => [entry.id, entry.metadata]),
+  );
 
   isApplyingBulkMetadata.value = true;
 
@@ -4136,6 +4443,26 @@ const applyBulkMetadata = async () => {
       collectionName: currentCollection.value.name,
       rowCount: nextMetadataEntries.length,
       rowIds: nextMetadataEntries.map((entry) => entry.id),
+      details: selectedRowsSnapshot
+        .slice(0, ACTIVITY_LOG_DETAIL_SECTION_LIMIT)
+        .map((row) =>
+          buildActivityRecordDetailSection({
+            title: row.id,
+            beforeRecord: buildActivityRecordSnapshot({
+              id: row.id,
+              metadata: row.metadata,
+            }),
+            afterRecord: buildActivityRecordSnapshot({
+              id: row.id,
+              metadata: nextMetadataValueMap.get(row.id),
+            }),
+            fields: ["metadata"],
+          }),
+        ),
+      detailsOverflowCount: Math.max(
+        0,
+        selectedRowsSnapshot.length - ACTIVITY_LOG_DETAIL_SECTION_LIMIT,
+      ),
       meta: {
         mode: bulkMetadataMode.value,
       },
@@ -5465,6 +5792,101 @@ const exportCSV = async (includeEmbeddings = false) => {
                 IDs: {{ truncateText(entry.rowIds.join(", "), 96) }}
               </span>
             </div>
+
+            <div class="activity-log-entry__actions">
+              <button
+                v-if="hasActivityDetails(entry)"
+                class="mini-button mini-button--ghost"
+                type="button"
+                @click="toggleActivityEntry(entry.id)"
+              >
+                <i
+                  :class="
+                    isActivityEntryExpanded(entry.id)
+                      ? 'pi pi-chevron-up'
+                      : 'pi pi-chevron-down'
+                  "
+                ></i>
+                <span>{{
+                  isActivityEntryExpanded(entry.id)
+                    ? "Hide details"
+                    : "View details"
+                }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="
+              hasActivityDetails(entry) && isActivityEntryExpanded(entry.id)
+            "
+            class="activity-log-entry__details"
+          >
+            <div class="activity-log-entry__details-summary">
+              <span>
+                Showing {{ formatNumber(entry.details.length) }}
+                {{ pluralize(entry.details.length, "entry", "entries") }}
+                with field-level changes.
+              </span>
+              <span v-if="entry.detailsOverflowCount > 0">
+                {{ formatNumber(entry.detailsOverflowCount) }} more
+                {{ pluralize(entry.detailsOverflowCount, "row") }} not shown.
+              </span>
+            </div>
+
+            <article
+              v-for="section in entry.details"
+              :key="`${entry.id}-${section.title}`"
+              class="activity-detail-section"
+            >
+              <div class="activity-detail-section__header">
+                <strong>{{ section.title }}</strong>
+              </div>
+
+              <div class="activity-detail-section__changes">
+                <section
+                  v-for="change in section.changes"
+                  :key="`${section.title}-${change.label}`"
+                  class="activity-detail-card"
+                >
+                  <p class="section-kicker activity-detail-card__label">
+                    {{ change.label }}
+                  </p>
+
+                  <div
+                    class="activity-detail-card__grid"
+                    :class="{
+                      'activity-detail-card__grid--single':
+                        !change.before || !change.after,
+                    }"
+                  >
+                    <div
+                      v-if="change.before"
+                      class="activity-detail-card__column"
+                    >
+                      <span class="activity-detail-card__column-label"
+                        >Before</span
+                      >
+                      <pre class="activity-detail-card__value"><code>{{
+                        change.before
+                      }}</code></pre>
+                    </div>
+
+                    <div
+                      v-if="change.after"
+                      class="activity-detail-card__column"
+                    >
+                      <span class="activity-detail-card__column-label"
+                        >After</span
+                      >
+                      <pre class="activity-detail-card__value"><code>{{
+                        change.after
+                      }}</code></pre>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </article>
           </div>
         </article>
       </div>
