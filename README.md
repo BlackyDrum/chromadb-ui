@@ -29,6 +29,7 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
 - Run embedding-based nearest-neighbor search with raw vector JSON.
 - Search records in the current collection.
 - Build metadata filters with match-all or match-any rules for the current table view.
+- Select multiple rows and run bulk actions like delete, metadata patch, and selected-row CSV export.
 - Add records with IDs, optional documents and metadata, then either paste embeddings manually or auto-generate them from document text.
 - Import or upsert JSON records with explicit embeddings or auto-generate missing embeddings from document text.
 - Collection metrics viewer with document, metadata, sampled embedding stats, and quality audit findings.

@@ -39,6 +39,7 @@ const version = ref("");
 const collections = ref([]);
 const currentCollection = ref(null);
 const currentCollectionData = ref([]);
+const selectedTableRows = ref([]);
 const createCollectionData = ref({ name: null, metadata: null });
 const editCollectionData = ref({ name: null, metadata: null });
 const createRecordData = ref({
@@ -77,10 +78,13 @@ const isExportingCsv = ref(false);
 const isImportingRecords = ref(false);
 const isCreatingRecord = ref(false);
 const isCheckingWorkspaceHealth = ref(false);
+const isDeletingRows = ref(false);
+const isApplyingBulkMetadata = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
 const showCreateRecordForm = ref(false);
+const showBulkMetadataDialog = ref(false);
 const mobileSidebarOpen = ref(false);
 const collectionSearch = ref("");
 const showQueryViewer = ref(false);
@@ -88,6 +92,8 @@ const showImportViewer = ref(false);
 const showMetricsViewer = ref(false);
 const showImportAutoEmbedSettings = ref(false);
 const showCreateRecordAutoEmbedSettings = ref(false);
+const bulkMetadataMode = ref("merge");
+const bulkMetadataValue = ref("");
 const metadataFilterMode = ref("all");
 const metadataFilterRules = ref([]);
 const metadataFilterFocusedRuleId = ref(null);
@@ -213,6 +219,17 @@ const resetCreateRecordState = () => {
   createRecordData.value = createEmptyRecordDraft();
 };
 
+const resetBulkMetadataState = () => {
+  showBulkMetadataDialog.value = false;
+  bulkMetadataMode.value = "merge";
+  bulkMetadataValue.value = "";
+};
+
+const resetBulkSelectionState = () => {
+  selectedTableRows.value = [];
+  resetBulkMetadataState();
+};
+
 const resetImportState = () => {
   showImportViewer.value = false;
   showImportAutoEmbedSettings.value = false;
@@ -247,6 +264,10 @@ const parseMetadataValue = (value) => {
   } catch (_) {
     return null;
   }
+};
+
+const isPlainMetadataObject = (value) => {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 };
 
 const createMetadataFilterRule = (overrides = {}) => ({
@@ -1346,6 +1367,73 @@ const filteredCollectionData = computed(() => {
   });
 });
 
+const visibleTableRows = computed(() => {
+  const processedRows = embeddingDataTable.value?.processedData;
+
+  if (Array.isArray(processedRows) && processedRows.length) {
+    return processedRows;
+  }
+
+  return filteredCollectionData.value;
+});
+
+const selectedTableRowIds = computed(() => {
+  return selectedTableRows.value
+    .map((row) => row?.id)
+    .filter((id) => Boolean(id));
+});
+
+const selectedRows = computed(() => {
+  if (!selectedTableRowIds.value.length) {
+    return [];
+  }
+
+  const selectedIdSet = new Set(selectedTableRowIds.value);
+
+  return currentCollectionData.value.filter((row) => selectedIdSet.has(row.id));
+});
+
+const selectedRowsCount = computed(() => selectedRows.value.length);
+
+const selectedRowsLabel = computed(() => {
+  return `${formatNumber(selectedRowsCount.value)} ${pluralize(selectedRowsCount.value, "row")} selected`;
+});
+
+const hasSelectedRows = computed(() => selectedRowsCount.value > 0);
+
+const visibleRowsCount = computed(() => visibleTableRows.value.length);
+
+const areAllVisibleRowsSelected = computed(() => {
+  if (!visibleTableRows.value.length) {
+    return false;
+  }
+
+  const selectedIdSet = new Set(selectedTableRowIds.value);
+
+  return visibleTableRows.value.every((row) => selectedIdSet.has(row.id));
+});
+
+const canApplyBulkMetadata = computed(() => {
+  if (bulkMetadataMode.value === "clear") {
+    return hasSelectedRows.value;
+  }
+
+  return (
+    hasSelectedRows.value &&
+    `${bulkMetadataValue.value ?? ""}`.trim().length > 0
+  );
+});
+
+const isRunningBulkRowAction = computed(() => {
+  return isDeletingRows.value || isApplyingBulkMetadata.value;
+});
+
+const bulkMetadataPlaceholder = computed(() => {
+  return bulkMetadataMode.value === "merge"
+    ? '{"reviewed":true,"owner":"ops"}'
+    : '{"source":"support","lang":"en"}';
+});
+
 const activeEmbeddingVector = computed(() => {
   if (!embeddingDialog.value.id) return [];
 
@@ -1529,6 +1617,25 @@ watch(
   },
   { deep: true },
 );
+
+watch(
+  currentCollectionData,
+  (rows) => {
+    if (!selectedTableRows.value.length) return;
+
+    const rowIdSet = new Set(rows.map((row) => row.id));
+    selectedTableRows.value = selectedTableRows.value.filter((row) =>
+      rowIdSet.has(row.id),
+    );
+  },
+  { deep: false },
+);
+
+watch(bulkMetadataMode, (nextMode) => {
+  if (nextMode === "clear") {
+    bulkMetadataValue.value = "";
+  }
+});
 
 watch(
   [
@@ -3037,6 +3144,7 @@ const handleDisconnect = () => {
   lastQuerySummary.value = "";
   hasCompletedQuery.value = false;
   showQueryViewer.value = false;
+  resetBulkSelectionState();
   resetCreateRecordState();
   resetImportState();
   showMetricsViewer.value = false;
@@ -3075,6 +3183,7 @@ const handleCollectionSelection = async (collection, isUpdating = false) => {
   lastQuerySummary.value = "";
   hasCompletedQuery.value = false;
   showQueryViewer.value = false;
+  resetBulkSelectionState();
   resetCreateRecordState();
   resetImportState();
   showMetricsViewer.value = false;
@@ -3333,6 +3442,7 @@ const handleCollectionDeletion = () => {
           queryResults.value = [];
           lastQuerySummary.value = "";
           showQueryViewer.value = false;
+          resetBulkSelectionState();
           resetCreateRecordState();
           resetImportState();
           showMetricsViewer.value = false;
@@ -3490,39 +3600,267 @@ const onEmbeddingCellEditComplete = async (event) => {
   }
 };
 
-const deleteEmbedding = async (id) => {
-  try {
-    await axios.post(
-      `${collectionBaseUrl.value}/${currentCollection.value.id}/delete`,
-      {
-        ids: [id],
-      },
-    );
+const removeRowsFromLocalState = (ids) => {
+  const idSet = new Set(ids);
 
-    const embeddingIndex = currentCollectionData.value.findIndex(
-      (embedding) => embedding.id === id,
-    );
+  currentCollectionData.value = currentCollectionData.value.filter(
+    (row) => !idSet.has(row.id),
+  );
+  selectedTableRows.value = selectedTableRows.value.filter(
+    (row) => !idSet.has(row.id),
+  );
+  queryResults.value = queryResults.value.filter(
+    (result) => !idSet.has(result.id),
+  );
 
-    if (embeddingIndex !== -1) {
-      currentCollectionData.value.splice(embeddingIndex, 1);
-    }
+  const nextExpandedRows = { ...expandedEmbeddingRows.value };
 
+  for (const id of ids) {
     delete embeddingPreviewCache.value[id];
     delete embeddingVectorCache.value[id];
     delete embeddingEditorDrafts.value[id];
     delete editingEmbeddingIds.value[id];
     delete savingEmbeddingIds.value[id];
+    delete nextExpandedRows[id];
 
     if (embeddingDialog.value.id === id) {
       closeEmbeddingDialog();
     }
+  }
+
+  expandedEmbeddingRows.value = nextExpandedRows;
+
+  if (!selectedTableRows.value.length) {
+    resetBulkMetadataState();
+  }
+};
+
+const parseBulkMetadataPayload = () => {
+  if (bulkMetadataMode.value === "clear") {
+    return null;
+  }
+
+  const trimmedPayload = `${bulkMetadataValue.value ?? ""}`.trim();
+
+  if (!trimmedPayload) {
+    throw new Error(
+      bulkMetadataMode.value === "merge"
+        ? "Enter a JSON object to merge into the selected rows."
+        : "Enter a JSON object or null before applying the metadata update.",
+    );
+  }
+
+  let parsedPayload;
+
+  try {
+    parsedPayload = JSON.parse(trimmedPayload);
+  } catch (_) {
+    throw new Error("Metadata update must be valid JSON.");
+  }
+
+  if (bulkMetadataMode.value === "merge") {
+    if (!isPlainMetadataObject(parsedPayload)) {
+      throw new Error("Merge mode requires a JSON object.");
+    }
+
+    return parsedPayload;
+  }
+
+  if (parsedPayload !== null && !isPlainMetadataObject(parsedPayload)) {
+    throw new Error("Replace mode requires a JSON object or null.");
+  }
+
+  return parsedPayload;
+};
+
+const selectVisibleRows = () => {
+  selectedTableRows.value = visibleTableRows.value.map((row) => row);
+};
+
+const clearSelectedRows = () => {
+  selectedTableRows.value = [];
+};
+
+const openBulkMetadataDialog = () => {
+  if (!hasSelectedRows.value) return;
+
+  bulkMetadataMode.value = "merge";
+  bulkMetadataValue.value = "";
+  showBulkMetadataDialog.value = true;
+};
+
+const refreshMetricsSummaryIfNeeded = async () => {
+  metricsEmbeddingSummary.value = null;
+
+  if (showMetricsViewer.value && currentCollectionData.value.length) {
+    await loadMetricsEmbeddingSummary();
+  }
+};
+
+const deleteRowsByIds = async (
+  ids,
+  {
+    successSummary = "Rows deleted",
+    successDetail = "",
+    errorSummary = "Delete failed",
+  } = {},
+) => {
+  if (!currentCollection.value || !ids.length || isDeletingRows.value) {
+    return;
+  }
+
+  isDeletingRows.value = true;
+
+  try {
+    await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/delete`,
+      {
+        ids,
+      },
+    );
+
+    removeRowsFromLocalState(ids);
+    await retrieveCollections();
+    await refreshMetricsSummaryIfNeeded();
+
+    toast.add({
+      severity: "success",
+      summary: successSummary,
+      detail:
+        successDetail ||
+        `${formatNumber(ids.length)} ${pluralize(ids.length, "row")} removed from ${currentCollection.value.name}.`,
+      life: 4000,
+    });
   } catch (error) {
     toast.add({
       severity: "error",
-      summary: "Error",
-      detail: `Unable to delete embedding. Reason: ${getErrorMessage(error)}`,
+      summary: errorSummary,
+      detail: getErrorMessage(error),
       life: 5000,
     });
+  } finally {
+    isDeletingRows.value = false;
+  }
+};
+
+const deleteEmbedding = async (id) => {
+  await deleteRowsByIds([id], {
+    successSummary: "Row deleted",
+    successDetail: `${id} was removed from ${currentCollection.value?.name ?? "the collection"}.`,
+    errorSummary: "Unable to delete row",
+  });
+};
+
+const handleBulkDeleteRows = () => {
+  if (!hasSelectedRows.value || isDeletingRows.value) return;
+
+  const ids = selectedRows.value.map((row) => row.id);
+
+  confirm.require({
+    message: `Delete ${formatNumber(ids.length)} selected ${pluralize(ids.length, "row")} from '${currentCollection.value?.name ?? "this collection"}'?`,
+    header: "Delete selected rows?",
+    icon: "pi pi-info-circle",
+    rejectLabel: "Cancel",
+    acceptLabel: "Delete",
+    rejectClass: "p-button-secondary p-button-outlined",
+    acceptClass: "p-button-danger",
+    acceptIcon: "pi pi-trash",
+    accept: async () => {
+      await deleteRowsByIds(ids, {
+        successSummary: "Selected rows deleted",
+        errorSummary: "Bulk delete failed",
+      });
+    },
+  });
+};
+
+const applyBulkMetadata = async () => {
+  if (
+    !currentCollection.value ||
+    !hasSelectedRows.value ||
+    isApplyingBulkMetadata.value
+  ) {
+    return;
+  }
+
+  let metadataPayload;
+
+  try {
+    metadataPayload = parseBulkMetadataPayload();
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid metadata update",
+      detail: error.message,
+      life: 5000,
+    });
+    return;
+  }
+
+  const selectedRowsSnapshot = selectedRows.value.map((row) => ({ ...row }));
+  const nextMetadataEntries = selectedRowsSnapshot.map((row) => {
+    const existingMetadata = parseMetadataValue(row.metadata);
+    const nextMetadata =
+      bulkMetadataMode.value === "merge"
+        ? {
+            ...(isPlainMetadataObject(existingMetadata)
+              ? existingMetadata
+              : {}),
+            ...metadataPayload,
+          }
+        : metadataPayload;
+
+    return {
+      id: row.id,
+      metadata: nextMetadata,
+      metadataLabel: safeStringify(nextMetadata),
+    };
+  });
+
+  isApplyingBulkMetadata.value = true;
+
+  try {
+    await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+      {
+        ids: nextMetadataEntries.map((entry) => entry.id),
+        metadatas: nextMetadataEntries.map((entry) => entry.metadata),
+      },
+    );
+
+    const nextMetadataMap = new Map(
+      nextMetadataEntries.map((entry) => [entry.id, entry.metadataLabel]),
+    );
+
+    currentCollectionData.value = currentCollectionData.value.map((row) =>
+      nextMetadataMap.has(row.id)
+        ? {
+            ...row,
+            metadata: nextMetadataMap.get(row.id),
+          }
+        : row,
+    );
+    selectedTableRows.value = currentCollectionData.value.filter((row) =>
+      nextMetadataMap.has(row.id),
+    );
+
+    toast.add({
+      severity: "success",
+      summary: "Metadata updated",
+      detail: `${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} ${nextMetadataEntries.length === 1 ? "was" : "were"} updated.`,
+      life: 4000,
+    });
+
+    resetBulkMetadataState();
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Bulk metadata update failed",
+      detail: getErrorMessage(error),
+      life: 5000,
+    });
+  } finally {
+    isApplyingBulkMetadata.value = false;
   }
 };
 
@@ -3612,18 +3950,22 @@ const escapeCsvValue = (value) => {
   return `"${normalizedValue.replace(/"/g, '""')}"`;
 };
 
-const buildExportFilename = (includeEmbeddings) => {
+const buildExportFilename = (includeEmbeddings, scopeSuffix = "") => {
   const sanitizedCollectionName =
     (currentCollection.value?.name ?? "collection")
       .trim()
       .replace(/[^a-zA-Z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .toLowerCase() || "collection";
+  const normalizedScopeSuffix = `${scopeSuffix ?? ""}`.trim();
   const dateStamp = new Date().toISOString().slice(0, 10);
+  const filenamePrefix = normalizedScopeSuffix
+    ? `${sanitizedCollectionName}-${normalizedScopeSuffix}`
+    : sanitizedCollectionName;
 
   return includeEmbeddings
-    ? `${sanitizedCollectionName}-with-embeddings-${dateStamp}.csv`
-    : `${sanitizedCollectionName}-${dateStamp}.csv`;
+    ? `${filenamePrefix}-with-embeddings-${dateStamp}.csv`
+    : `${filenamePrefix}-${dateStamp}.csv`;
 };
 
 const downloadCsvFile = (filename, csvContent) => {
@@ -3667,7 +4009,11 @@ const fetchEmbeddingsForExport = async (ids) => {
   }, {});
 };
 
-const getRowsForExport = () => {
+const getRowsForExport = (rowsOverride = null) => {
+  if (Array.isArray(rowsOverride)) {
+    return rowsOverride;
+  }
+
   const processedRows = embeddingDataTable.value?.processedData;
 
   if (Array.isArray(processedRows) && processedRows.length) {
@@ -3677,11 +4023,88 @@ const getRowsForExport = () => {
   return filteredCollectionData.value;
 };
 
+const buildCsvLines = (rows, embeddingsById = null) => {
+  const includeEmbeddings = Boolean(embeddingsById);
+  const csvHeader = includeEmbeddings
+    ? ["id", "document", "metadata", "embedding"]
+    : ["id", "document", "metadata"];
+
+  return [
+    csvHeader.map(escapeCsvValue).join(","),
+    ...rows.map((row) =>
+      [
+        row.id,
+        row.document,
+        row.metadata,
+        ...(includeEmbeddings ? [safeStringify(embeddingsById[row.id])] : []),
+      ]
+        .map(escapeCsvValue)
+        .join(","),
+    ),
+  ];
+};
+
 const exportTableCsv = () => {
   if (!getRowsForExport().length) return;
 
   hideExportOverlayPanel();
   embeddingDataTable.value?.exportCSV();
+};
+
+const exportRowsAsCsv = async ({
+  rows = null,
+  includeEmbeddings = false,
+  scopeSuffix = "",
+} = {}) => {
+  const rowsToExport = getRowsForExport(rows).map((row) => ({ ...row }));
+
+  if (
+    !currentCollection.value ||
+    !rowsToExport.length ||
+    isExportingCsv.value
+  ) {
+    return;
+  }
+
+  if (!includeEmbeddings && rows === null) {
+    exportTableCsv();
+    return;
+  }
+
+  if (rows === null) {
+    hideExportOverlayPanel();
+  }
+
+  isExportingCsv.value = true;
+
+  try {
+    const embeddingsById = includeEmbeddings
+      ? await fetchEmbeddingsForExport(rowsToExport.map((row) => row.id))
+      : null;
+    const csvLines = buildCsvLines(rowsToExport, embeddingsById);
+
+    downloadCsvFile(
+      buildExportFilename(includeEmbeddings, scopeSuffix),
+      csvLines.join("\n"),
+    );
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Export failed",
+      detail: `Unable to export CSV. Reason: ${getErrorMessage(error)}`,
+      life: 5000,
+    });
+  } finally {
+    isExportingCsv.value = false;
+  }
+};
+
+const exportSelectedRows = async () => {
+  await exportRowsAsCsv({
+    rows: selectedRows.value,
+    includeEmbeddings: false,
+    scopeSuffix: "selected",
+  });
 };
 
 const exportCSV = async (includeEmbeddings = false) => {
@@ -3693,44 +4116,7 @@ const exportCSV = async (includeEmbeddings = false) => {
     return;
   }
 
-  if (!includeEmbeddings) {
-    exportTableCsv();
-    return;
-  }
-
-  hideExportOverlayPanel();
-  isExportingCsv.value = true;
-
-  try {
-    const rowsToExport = getRowsForExport().map((row) => ({ ...row }));
-    const embeddingsById = await fetchEmbeddingsForExport(
-      rowsToExport.map((row) => row.id),
-    );
-    const csvLines = [
-      ["id", "document", "metadata", "embedding"].map(escapeCsvValue).join(","),
-      ...rowsToExport.map((row) =>
-        [
-          row.id,
-          row.document,
-          row.metadata,
-          safeStringify(embeddingsById[row.id]),
-        ]
-          .map(escapeCsvValue)
-          .join(","),
-      ),
-    ];
-
-    downloadCsvFile(buildExportFilename(true), csvLines.join("\n"));
-  } catch (error) {
-    toast.add({
-      severity: "error",
-      summary: "Export failed",
-      detail: `Unable to export CSV with embeddings. Reason: ${getErrorMessage(error)}`,
-      life: 5000,
-    });
-  } finally {
-    isExportingCsv.value = false;
-  }
+  await exportRowsAsCsv({ includeEmbeddings });
 };
 </script>
 
@@ -4209,6 +4595,7 @@ const exportCSV = async (includeEmbeddings = false) => {
             stateStorage="local"
             stateKey="dt-state-chromadb-ui"
             dataKey="id"
+            v-model:selection="selectedTableRows"
             v-model:filters="filters"
             v-model:expandedRows="expandedEmbeddingRows"
             :value="filteredCollectionData"
@@ -4325,6 +4712,78 @@ const exportCSV = async (includeEmbeddings = false) => {
                   Clear metadata filters
                 </button>
               </div>
+
+              <div v-if="hasSelectedRows" class="table-bulk-strip">
+                <div class="table-bulk-strip__summary">
+                  <span class="section-kicker">Bulk row actions</span>
+                  <strong>{{ selectedRowsLabel }}</strong>
+                  <p>Apply changes across the selected rows.</p>
+                </div>
+
+                <div class="table-bulk-strip__actions">
+                  <button
+                    class="mini-button mini-button--ghost"
+                    type="button"
+                    :disabled="
+                      !visibleRowsCount ||
+                      areAllVisibleRowsSelected ||
+                      isRunningBulkRowAction
+                    "
+                    @click="selectVisibleRows"
+                  >
+                    Select visible
+                  </button>
+
+                  <button
+                    class="mini-button mini-button--ghost"
+                    type="button"
+                    :disabled="isRunningBulkRowAction || isExportingCsv"
+                    @click="clearSelectedRows"
+                  >
+                    Clear selection
+                  </button>
+
+                  <button
+                    class="mini-button mini-button--ghost"
+                    type="button"
+                    :disabled="isRunningBulkRowAction || isExportingCsv"
+                    @click="exportSelectedRows"
+                  >
+                    <i
+                      :class="
+                        isExportingCsv
+                          ? 'pi pi-spin pi-spinner'
+                          : 'pi pi-download'
+                      "
+                    ></i>
+                    <span>Export selected CSV</span>
+                  </button>
+
+                  <button
+                    class="mini-button"
+                    type="button"
+                    :disabled="isRunningBulkRowAction"
+                    @click="openBulkMetadataDialog"
+                  >
+                    <i class="pi pi-pencil"></i>
+                    <span>Patch metadata</span>
+                  </button>
+
+                  <button
+                    class="mini-button mini-button--danger"
+                    type="button"
+                    :disabled="isRunningBulkRowAction"
+                    @click="handleBulkDeleteRows"
+                  >
+                    <i
+                      :class="
+                        isDeletingRows ? 'pi pi-spin pi-spinner' : 'pi pi-trash'
+                      "
+                    ></i>
+                    <span>Delete selected</span>
+                  </button>
+                </div>
+              </div>
             </template>
 
             <template #empty>
@@ -4349,6 +4808,7 @@ const exportCSV = async (includeEmbeddings = false) => {
               </div>
             </template>
 
+            <Column selectionMode="multiple" headerStyle="width: 3.25rem" />
             <Column expander headerStyle="width: 3.75rem" />
 
             <Column field="id" header="ID" sortable headerStyle="width: 11rem">
@@ -4413,7 +4873,8 @@ const exportCSV = async (includeEmbeddings = false) => {
                 <button
                   class="row-action row-action--danger"
                   type="button"
-                  aria-label="Delete embedding"
+                  aria-label="Delete row"
+                  :disabled="isDeletingRows"
                   @click="deleteEmbedding(slotProps.data.id)"
                 >
                   <i class="pi pi-trash"></i>
@@ -4617,6 +5078,136 @@ const exportCSV = async (includeEmbeddings = false) => {
       </section>
     </main>
   </div>
+
+  <Dialog
+    v-model:visible="showBulkMetadataDialog"
+    modal
+    :draggable="false"
+    class="collection-dialog bulk-row-dialog"
+    @hide="resetBulkMetadataState"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Bulk row actions</p>
+        <h2>Update metadata across selected rows</h2>
+      </div>
+    </template>
+
+    <div class="dialog-body">
+      <div class="bulk-row-dialog__summary">
+        <div class="bulk-row-dialog__summary-copy">
+          <p class="section-kicker">Selection</p>
+          <strong>{{ selectedRowsLabel }}</strong>
+          <p>
+            {{
+              currentCollection
+                ? `Applying updates inside ${currentCollection.name}.`
+                : "Select a collection before applying bulk metadata updates."
+            }}
+          </p>
+        </div>
+
+        <span class="tag-chip">
+          {{
+            currentCollection ? currentCollection.name : "Select a collection"
+          }}
+        </span>
+      </div>
+
+      <div class="query-mode-switch bulk-row-dialog__mode-switch">
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active': bulkMetadataMode === 'merge',
+          }"
+          type="button"
+          @click="bulkMetadataMode = 'merge'"
+        >
+          Merge patch
+        </button>
+
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active': bulkMetadataMode === 'replace',
+          }"
+          type="button"
+          @click="bulkMetadataMode = 'replace'"
+        >
+          Replace all
+        </button>
+
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active': bulkMetadataMode === 'clear',
+          }"
+          type="button"
+          @click="bulkMetadataMode = 'clear'"
+        >
+          Clear metadata
+        </button>
+      </div>
+
+      <p class="query-panel__hint">
+        {{
+          bulkMetadataMode === "merge"
+            ? "Merge mode adds or overwrites keys while keeping each row's other metadata intact."
+            : bulkMetadataMode === "replace"
+              ? "Replace mode swaps every selected row to the same JSON object or null."
+              : "Clear mode sets metadata to null on every selected row."
+        }}
+      </p>
+
+      <label v-if="bulkMetadataMode !== 'clear'" class="field">
+        <span class="field__label">Metadata JSON</span>
+        <span class="field__hint">
+          {{
+            bulkMetadataMode === "merge"
+              ? "Provide a JSON object. Rows with null or non-object metadata are treated as empty objects before merging."
+              : "Provide a JSON object or null to replace metadata on every selected row."
+          }}
+        </span>
+        <textarea
+          v-model="bulkMetadataValue"
+          rows="12"
+          :placeholder="bulkMetadataPlaceholder"
+        ></textarea>
+      </label>
+
+      <div v-else class="bulk-row-dialog__notice">
+        Every selected row will be updated so its metadata becomes
+        <code>null</code>.
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          :disabled="isApplyingBulkMetadata"
+          @click="resetBulkMetadataState"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="ui-button ui-button--primary"
+          type="button"
+          :disabled="!canApplyBulkMetadata || isApplyingBulkMetadata"
+          @click="applyBulkMetadata"
+        >
+          <i
+            :class="
+              isApplyingBulkMetadata ? 'pi pi-spin pi-spinner' : 'pi pi-check'
+            "
+          ></i>
+          <span>Apply to selected rows</span>
+        </button>
+      </div>
+    </template>
+  </Dialog>
 
   <Dialog
     v-model:visible="showMetricsViewer"

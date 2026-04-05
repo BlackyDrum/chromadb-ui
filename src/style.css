@@ -1212,7 +1212,6 @@ pre {
   border: 1px solid var(--stroke);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.03);
-  width: fit-content;
 }
 
 .query-mode-switch__button {
@@ -2043,6 +2042,47 @@ pre {
   font-size: 0.76rem;
 }
 
+.table-bulk-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(83, 229, 191, 0.16);
+  border-radius: 1.2rem;
+  background: linear-gradient(
+      180deg,
+      rgba(83, 229, 191, 0.08),
+      rgba(83, 229, 191, 0.02)
+    ),
+    rgba(255, 255, 255, 0.03);
+}
+
+.table-bulk-strip__summary {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.table-bulk-strip__summary strong {
+  font-size: 1rem;
+}
+
+.table-bulk-strip__summary p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.table-bulk-strip__actions {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+
 .table-empty-state {
   display: grid;
   gap: 0.85rem;
@@ -2240,6 +2280,12 @@ pre {
   color: var(--text-soft);
 }
 
+.mini-button--danger {
+  border-color: rgba(255, 143, 141, 0.18);
+  background: rgba(255, 143, 141, 0.1);
+  color: var(--danger);
+}
+
 .mini-button--inline {
   min-height: 1.9rem;
   padding: 0.35rem 0.6rem;
@@ -2398,6 +2444,11 @@ pre {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.row-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .dialog-heading h2 {
   font-size: 1.7rem;
 }
@@ -2410,6 +2461,50 @@ pre {
 
 .dialog-actions {
   width: 100%;
+}
+
+.bulk-row-dialog__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.bulk-row-dialog__summary-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.bulk-row-dialog__summary-copy strong {
+  color: var(--text-main);
+  font-size: 1rem;
+}
+
+.bulk-row-dialog__summary-copy p:last-child {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.bulk-row-dialog__mode-switch .query-mode-switch__button {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.bulk-row-dialog__notice {
+  padding: 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.bulk-row-dialog__notice code {
+  color: var(--amber);
 }
 
 .collection-menu {
@@ -3462,7 +3557,9 @@ pre {
   .connect-card__footer,
   .panel-heading,
   .table-toolbar,
+  .table-bulk-strip,
   .table-filter-strip,
+  .bulk-row-dialog__summary,
   .dialog-actions {
     flex-direction: column;
   }
@@ -3474,7 +3571,8 @@ pre {
 
   .workspace-header__intro,
   .workspace-header__context,
-  .table-toolbar__actions {
+  .table-toolbar__actions,
+  .table-bulk-strip__actions {
     width: 100%;
   }
 
@@ -3496,8 +3594,13 @@ pre {
   }
 
   .workspace-header__context,
-  .table-toolbar__actions {
+  .table-toolbar__actions,
+  .table-bulk-strip__actions {
     justify-content: stretch;
+  }
+
+  .table-bulk-strip__actions > * {
+    width: 100%;
   }
 
   .query-mode-switch,
