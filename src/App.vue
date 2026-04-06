@@ -125,6 +125,8 @@ const isLoadingMetricsEmbeddings = ref(false);
 const metricsEmbeddingSummary = ref(null);
 const activityLog = ref([]);
 
+const chromaLogoUrl = `${import.meta.env.BASE_URL}chroma.png`;
+
 const entryHighlights = [
   {
     label: "Query workflows",
@@ -4865,7 +4867,7 @@ const exportCSV = async (includeEmbeddings = false) => {
     <section class="entry-layout">
       <div class="hero-copy">
         <div class="brand-pill">
-          <img src="/chroma.png" alt="ChromaDB logo" />
+          <img :src="chromaLogoUrl" alt="ChromaDB logo" />
           <span>ChromaDB UI</span>
         </div>
 
@@ -4999,7 +5001,7 @@ const exportCSV = async (includeEmbeddings = false) => {
       <div class="sidebar-top">
         <div class="brand-lockup">
           <div class="brand-lockup__logo">
-            <img src="/chroma.png" alt="ChromaDB logo" />
+            <img :src="chromaLogoUrl" alt="ChromaDB logo" />
           </div>
 
           <div>
