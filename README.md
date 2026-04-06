@@ -124,5 +124,5 @@ If you are using the deployed GitHub Pages app and want to use Ollama for record
 OLLAMA_ORIGINS=https://blackydrum.github.io
 ```
 
-After making these changes, restart Ollama
+After making these changes, restart Ollama.
 
