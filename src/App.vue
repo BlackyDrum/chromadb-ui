@@ -8619,7 +8619,9 @@ const exportCSV = async (includeEmbeddings = false) => {
                 </div>
               </section>
 
-              <section class="query-result-card__section">
+              <section
+                class="query-result-card__section query-result-card__section--metadata"
+              >
                 <p class="section-kicker query-result-card__label">Metadata</p>
 
                 <code
