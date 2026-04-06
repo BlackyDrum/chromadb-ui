@@ -1973,6 +1973,24 @@ pre {
   text-transform: uppercase;
 }
 
+.query-result-card__document {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.query-result-card__document--collapsed {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+
+.query-result-card__document-toggle {
+  align-self: flex-start;
+  margin-top: -0.2rem;
+}
+
 .query-result-card__metadata {
   display: -webkit-box;
   overflow: hidden;

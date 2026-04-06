@@ -114,6 +114,7 @@ const queryWhereDocumentMode = ref("all");
 const queryWhereDocumentRules = ref([]);
 const queryResultCount = ref(5);
 const queryResults = ref([]);
+const expandedQueryResultDocuments = ref({});
 const lastQuerySummary = ref("");
 const hasCompletedQuery = ref(false);
 const queryHistory = ref([]);
@@ -170,6 +171,8 @@ const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
+const QUERY_RESULT_DOCUMENT_COLLAPSE_LENGTH = 280;
+const QUERY_RESULT_DOCUMENT_COLLAPSE_LINES = 6;
 const ACTIVITY_LOG_LIMIT = 50;
 const ACTIVITY_LOG_ID_PREVIEW_LIMIT = 20;
 const ACTIVITY_LOG_DETAIL_SECTION_LIMIT = 8;
@@ -796,6 +799,30 @@ const truncateText = (value, limit = 80) => {
   if (normalizedValue.length <= limit) return normalizedValue;
 
   return `${normalizedValue.slice(0, Math.max(0, limit - 1))}…`;
+};
+
+const isQueryResultDocumentFoldable = (value) => {
+  const normalizedValue = `${value ?? ""}`.trim();
+
+  if (!normalizedValue) return false;
+
+  return (
+    normalizedValue.length > QUERY_RESULT_DOCUMENT_COLLAPSE_LENGTH ||
+    normalizedValue.split(/\r?\n/).length > QUERY_RESULT_DOCUMENT_COLLAPSE_LINES
+  );
+};
+
+const isQueryResultDocumentExpanded = (id) => {
+  return Boolean(expandedQueryResultDocuments.value[id]);
+};
+
+const toggleQueryResultDocument = (id) => {
+  if (!id) return;
+
+  expandedQueryResultDocuments.value = {
+    ...expandedQueryResultDocuments.value,
+    [id]: !expandedQueryResultDocuments.value[id],
+  };
 };
 
 const formatQueryHistoryTimestamp = (value) => {
@@ -2568,6 +2595,14 @@ watch(
   { deep: false },
 );
 
+watch(
+  queryResults,
+  () => {
+    expandedQueryResultDocuments.value = {};
+  },
+  { deep: false },
+);
+
 watch(bulkMetadataMode, (nextMode) => {
   if (nextMode === "clear") {
     bulkMetadataValue.value = "";
@@ -2982,10 +3017,10 @@ const formatQueryDistance = (distance) => {
 
 const getQueryResultLabel = (result) => {
   if (result.matchType === "semantic") {
-    return `Semantic distance ${formatQueryDistance(result.distance)}`;
+    return `distance ${formatQueryDistance(result.distance)}`;
   }
 
-  return `Vector distance ${formatQueryDistance(result.distance)}`;
+  return `distance ${formatQueryDistance(result.distance)}`;
 };
 
 const parseQueryEmbedding = (value) => {
@@ -8608,9 +8643,29 @@ const exportCSV = async (includeEmbeddings = false) => {
               <span>{{ getQueryResultLabel(result) }}</span>
             </div>
 
-            <p class="query-result-card__document">
+            <p
+              class="query-result-card__document"
+              :class="{
+                'query-result-card__document--collapsed':
+                  isQueryResultDocumentFoldable(result.document) &&
+                  !isQueryResultDocumentExpanded(result.id),
+              }"
+            >
               {{ result.document || "No document returned." }}
             </p>
+
+            <button
+              v-if="isQueryResultDocumentFoldable(result.document)"
+              class="mini-button mini-button--ghost mini-button--inline query-result-card__document-toggle"
+              type="button"
+              @click="toggleQueryResultDocument(result.id)"
+            >
+              <span>{{
+                isQueryResultDocumentExpanded(result.id)
+                  ? "Show less"
+                  : "Show more"
+              }}</span>
+            </button>
 
             <code
               class="query-result-card__metadata hljs json-highlight"
