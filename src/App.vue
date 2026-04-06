@@ -4873,14 +4873,23 @@ const onEmbeddingCellEditComplete = async (event) => {
     event.field === "metadata" ? JSON.parse(embedding.metadata) : undefined;
 
   try {
-    await axios.post(
-      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
-      {
-        documents: [embedding.document],
-        ids: [embedding.id],
-        metadatas: [parsedMetadataForUpdate],
-      },
-    );
+    if (event.field === "metadata") {
+      await applyExactMetadataOnServer([
+        {
+          id: embedding.id,
+          metadata: parsedMetadataForUpdate,
+        },
+      ]);
+    } else {
+      await axios.post(
+        `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+        {
+          documents: [embedding.document],
+          ids: [embedding.id],
+          metadatas: [parsedMetadataForUpdate],
+        },
+      );
+    }
 
     appendActivityLogEntry({
       type: "edit",
@@ -5024,6 +5033,262 @@ const refreshMetricsSummaryIfNeeded = async () => {
   if (showMetricsViewer.value && currentCollectionData.value.length) {
     await loadMetricsEmbeddingSummary();
   }
+};
+
+const fetchRecordsByIds = async (
+  ids,
+  include = ["documents", "embeddings", "metadatas", "uris"],
+) => {
+  if (!currentCollection.value || !ids.length) {
+    return [];
+  }
+
+  const response = await axios.post(
+    `${collectionBaseUrl.value}/${currentCollection.value.id}/get`,
+    {
+      ids,
+      include,
+    },
+  );
+
+  const responseIds = Array.isArray(response.data?.ids)
+    ? response.data.ids
+    : [];
+  const documents = Array.isArray(response.data?.documents)
+    ? response.data.documents
+    : [];
+  const embeddings = Array.isArray(response.data?.embeddings)
+    ? response.data.embeddings
+    : [];
+  const metadatas = Array.isArray(response.data?.metadatas)
+    ? response.data.metadatas
+    : [];
+  const uris = Array.isArray(response.data?.uris) ? response.data.uris : [];
+
+  return responseIds.map((id, index) => ({
+    id,
+    document: documents[index],
+    embedding: embeddings[index],
+    metadata: metadatas[index],
+    uri: uris[index],
+  }));
+};
+
+const buildRecordAddPayloadGroups = (
+  records,
+  { includeMetadata = false } = {},
+) => {
+  const payloadGroups = new Map();
+
+  for (const record of records) {
+    const hasDocument =
+      Object.prototype.hasOwnProperty.call(record, "document") &&
+      record.document !== null &&
+      record.document !== undefined;
+    const hasEmbedding =
+      Object.prototype.hasOwnProperty.call(record, "embedding") &&
+      Array.isArray(record.embedding) &&
+      record.embedding.length > 0;
+    const hasMetadata =
+      includeMetadata &&
+      Object.prototype.hasOwnProperty.call(record, "metadata") &&
+      record.metadata !== undefined;
+    const hasUri =
+      Object.prototype.hasOwnProperty.call(record, "uri") &&
+      record.uri !== null &&
+      record.uri !== undefined;
+    const key = [
+      hasDocument ? "d" : "",
+      hasEmbedding ? "e" : "",
+      hasMetadata ? "m" : "",
+      hasUri ? "u" : "",
+    ].join("");
+
+    if (!payloadGroups.has(key)) {
+      payloadGroups.set(key, {
+        ids: [],
+        embeddings: hasEmbedding ? [] : null,
+        documents: hasDocument ? [] : null,
+        metadatas: hasMetadata ? [] : null,
+        uris: hasUri ? [] : null,
+      });
+    }
+
+    const payloadGroup = payloadGroups.get(key);
+    payloadGroup.ids.push(record.id);
+
+    if (hasDocument) {
+      payloadGroup.documents.push(record.document);
+    }
+
+    if (hasEmbedding) {
+      payloadGroup.embeddings.push(record.embedding);
+    }
+
+    if (hasMetadata) {
+      payloadGroup.metadatas.push(record.metadata);
+    }
+
+    if (hasUri) {
+      payloadGroup.uris.push(record.uri);
+    }
+  }
+
+  return Array.from(payloadGroups.values());
+};
+
+const normalizeMetadataForComparison = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(normalizeMetadataForComparison);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .sort((leftKey, rightKey) => leftKey.localeCompare(rightKey))
+      .reduce((normalizedValue, key) => {
+        normalizedValue[key] = normalizeMetadataForComparison(value[key]);
+        return normalizedValue;
+      }, {});
+  }
+
+  return value ?? null;
+};
+
+const areMetadataValuesEqual = (leftValue, rightValue) => {
+  return (
+    safeStringify(normalizeMetadataForComparison(leftValue)) ===
+    safeStringify(normalizeMetadataForComparison(rightValue))
+  );
+};
+
+const rebuildRecordsWithMetadata = async (metadataEntries) => {
+  if (!currentCollection.value || !metadataEntries.length) {
+    return false;
+  }
+
+  const ids = metadataEntries.map((entry) => entry.id);
+  const nextMetadataMap = new Map(
+    metadataEntries.map((entry) => [entry.id, entry.metadata]),
+  );
+
+  const currentRecords = await fetchRecordsByIds(ids, [
+    "documents",
+    "embeddings",
+    "metadatas",
+    "uris",
+  ]);
+
+  if (currentRecords.length !== ids.length) {
+    throw new Error(
+      "Unable to rebuild all selected rows while replacing metadata.",
+    );
+  }
+
+  const rebuiltRecords = currentRecords.map((record) => {
+    const nextMetadata = nextMetadataMap.get(record.id);
+
+    if (nextMetadata === undefined || nextMetadata === null) {
+      return {
+        ...record,
+        metadata: undefined,
+      };
+    }
+
+    return {
+      ...record,
+      metadata: nextMetadata,
+    };
+  });
+
+  const rebuiltPayloadGroups = buildRecordAddPayloadGroups(rebuiltRecords, {
+    includeMetadata: true,
+  });
+  const restorePayloadGroups = buildRecordAddPayloadGroups(currentRecords, {
+    includeMetadata: false,
+  });
+  const restorePayloadGroupsWithMetadata = buildRecordAddPayloadGroups(
+    currentRecords,
+    {
+      includeMetadata: true,
+    },
+  );
+
+  await axios.post(
+    `${collectionBaseUrl.value}/${currentCollection.value.id}/delete`,
+    {
+      ids,
+    },
+  );
+
+  try {
+    for (const payloadGroup of rebuiltPayloadGroups) {
+      await axios.post(
+        `${collectionBaseUrl.value}/${currentCollection.value.id}/add`,
+        payloadGroup,
+      );
+    }
+  } catch (error) {
+    try {
+      for (const payloadGroup of restorePayloadGroupsWithMetadata.length
+        ? restorePayloadGroupsWithMetadata
+        : restorePayloadGroups) {
+        await axios.post(
+          `${collectionBaseUrl.value}/${currentCollection.value.id}/add`,
+          payloadGroup,
+        );
+      }
+    } catch (_) {
+      // Best effort rollback only; preserve the original failure below.
+    }
+
+    throw error;
+  }
+
+  return true;
+};
+
+const applyExactMetadataOnServer = async (metadataEntries) => {
+  if (!currentCollection.value || !metadataEntries.length) {
+    return { usedRebuildFallback: false };
+  }
+
+  const ids = metadataEntries.map((entry) => entry.id);
+  const expectedMetadataMap = new Map(
+    metadataEntries.map((entry) => [entry.id, entry.metadata ?? null]),
+  );
+
+  await axios.post(
+    `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+    {
+      ids,
+      metadatas: metadataEntries.map((entry) => entry.metadata ?? null),
+    },
+  );
+
+  const verificationRecords = await fetchRecordsByIds(ids, ["metadatas"]);
+  const remainingEntries = verificationRecords
+    .filter(
+      (record) =>
+        !areMetadataValuesEqual(
+          record.metadata ?? null,
+          expectedMetadataMap.get(record.id) ?? null,
+        ),
+    )
+    .map((record) => ({
+      id: record.id,
+      metadata: expectedMetadataMap.get(record.id) ?? null,
+    }));
+
+  if (!remainingEntries.length) {
+    return { usedRebuildFallback: false };
+  }
+
+  await rebuildRecordsWithMetadata(remainingEntries);
+
+  return {
+    usedRebuildFallback: true,
+    rebuiltIds: remainingEntries.map((entry) => entry.id),
+  };
 };
 
 const deleteRowsByIds = async (
@@ -5188,17 +5453,28 @@ const applyBulkMetadata = async () => {
   const nextMetadataValueMap = new Map(
     nextMetadataEntries.map((entry) => [entry.id, entry.metadata]),
   );
+  const shouldApplyExactMetadataServerSide =
+    bulkMetadataMode.value === "replace" || bulkMetadataMode.value === "clear";
+  const exactMetadataEntries = nextMetadataEntries.map((entry) => ({
+    id: entry.id,
+    metadata: entry.metadata,
+  }));
+  const isExactMetadataClear = nextMetadataEntries.every(
+    (entry) => entry.metadata === null,
+  );
 
   isApplyingBulkMetadata.value = true;
 
   try {
-    await axios.post(
-      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
-      {
-        ids: nextMetadataEntries.map((entry) => entry.id),
-        metadatas: nextMetadataEntries.map((entry) => entry.metadata),
-      },
-    );
+    const bulkMetadataResult = shouldApplyExactMetadataServerSide
+      ? await applyExactMetadataOnServer(exactMetadataEntries)
+      : await axios.post(
+          `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+          {
+            ids: nextMetadataEntries.map((entry) => entry.id),
+            metadatas: nextMetadataEntries.map((entry) => entry.metadata),
+          },
+        );
 
     const nextMetadataMap = new Map(
       nextMetadataEntries.map((entry) => [entry.id, entry.metadataLabel]),
@@ -5219,7 +5495,7 @@ const applyBulkMetadata = async () => {
     toast.add({
       severity: "success",
       summary: "Metadata updated",
-      detail: `${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} ${nextMetadataEntries.length === 1 ? "was" : "were"} updated.`,
+      detail: `${formatNumber(nextMetadataEntries.length)} selected ${pluralize(nextMetadataEntries.length, "row")} ${nextMetadataEntries.length === 1 ? "was" : "were"} updated.${bulkMetadataResult?.usedRebuildFallback ? ` Metadata ${isExactMetadataClear ? "clear" : "replacement"} used a server-side rebuild fallback for rows that Chroma did not fully replace via update.` : ""}`,
       life: 4000,
     });
 
