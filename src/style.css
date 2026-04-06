@@ -1952,6 +1952,7 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+  height: 100%;
   padding: 1rem;
   border: 1px solid var(--stroke);
   border-radius: 1.1rem;
@@ -1982,6 +1983,15 @@ pre {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.query-result-card__metadata.hljs.json-highlight {
+  display: -webkit-box;
+}
+
+.query-result-card__actions {
+  margin-top: auto;
+  align-items: center;
 }
 
 .query-panel__empty {
@@ -2065,6 +2075,23 @@ pre {
   word-break: break-word;
   color: var(--text-soft);
   line-height: 1.65;
+}
+
+.hljs.json-highlight {
+  padding: 0 !important;
+  background: transparent !important;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow-x: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code-block pre .hljs.json-highlight,
+.activity-detail-card__value .hljs.json-highlight {
+  display: block;
 }
 
 .table-toolbar {
@@ -2272,6 +2299,10 @@ pre {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 6;
+}
+
+.cell-json.hljs.json-highlight {
+  display: -webkit-box;
 }
 
 .embedding-preview {

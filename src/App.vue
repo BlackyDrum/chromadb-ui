@@ -9,6 +9,8 @@ import {
 } from "vue";
 
 import axios from "axios";
+import hljs from "highlight.js/lib/core";
+import jsonLanguage from "highlight.js/lib/languages/json";
 
 import Toast from "primevue/toast";
 import { useToast } from "primevue/usetoast";
@@ -24,6 +26,7 @@ import {
 
 const toast = useToast();
 const confirm = useConfirm();
+hljs.registerLanguage("json", jsonLanguage);
 
 const filters = ref({
   global: { value: null, matchMode: FilterMatchMode.CONTAINS },
@@ -226,6 +229,7 @@ const IMPORT_EXAMPLE_PAYLOAD = `[
 let metadataFilterRuleSequence = 0;
 let workspaceHealthCheckTimer = null;
 let activityLogSequence = 0;
+const highlightedJsonCache = new Map();
 
 const safeStringify = (value, pretty = false) => {
   if (value === null || value === undefined) return "null";
@@ -235,6 +239,28 @@ const safeStringify = (value, pretty = false) => {
   } catch (_) {
     return String(value);
   }
+};
+
+const highlightJsonValue = (value, pretty = false) => {
+  const source =
+    typeof value === "string" ? value : safeStringify(value, pretty);
+  const normalizedSource = source || "null";
+  const cacheKey = `${pretty ? "pretty" : "raw"}:${normalizedSource}`;
+
+  if (highlightedJsonCache.has(cacheKey)) {
+    return highlightedJsonCache.get(cacheKey);
+  }
+
+  const highlightedValue = hljs.highlight(normalizedSource, {
+    language: "json",
+  }).value;
+
+  if (highlightedJsonCache.size >= 300) {
+    highlightedJsonCache.clear();
+  }
+
+  highlightedJsonCache.set(cacheKey, highlightedValue);
+  return highlightedValue;
 };
 
 const formatNumber = (value) => new Intl.NumberFormat().format(value ?? 0);
@@ -1065,6 +1091,18 @@ const collectionMetadataPreview = computed(() => {
   }
 
   return safeStringify(currentCollection.value.metadata, true);
+});
+
+const collectionMetadataPreviewHtml = computed(() => {
+  if (
+    !currentCollection.value ||
+    currentCollection.value.metadata === null ||
+    currentCollection.value.metadata === undefined
+  ) {
+    return "";
+  }
+
+  return highlightJsonValue(currentCollection.value.metadata, true);
 });
 
 const collectionMetrics = computed(() => {
@@ -6271,7 +6309,11 @@ const exportCSV = async (includeEmbeddings = false) => {
 
           <div class="code-block">
             <div class="code-block__label">Metadata preview</div>
-            <pre>{{ collectionMetadataPreview }}</pre>
+            <pre v-if="collectionMetadataPreviewHtml"><code
+              class="hljs json-highlight"
+              v-html="collectionMetadataPreviewHtml"
+            ></code></pre>
+            <pre v-else>{{ collectionMetadataPreview }}</pre>
           </div>
         </article>
 
@@ -6550,9 +6592,10 @@ const exportCSV = async (includeEmbeddings = false) => {
               headerStyle="width: 20rem"
             >
               <template #body="slotProps">
-                <code class="cell-json">{{
-                  slotProps.data.metadata ?? "null"
-                }}</code>
+                <code
+                  class="cell-json hljs json-highlight"
+                  v-html="highlightJsonValue(slotProps.data.metadata ?? 'null')"
+                ></code>
               </template>
 
               <template #editor="{ data, field }">
@@ -6939,9 +6982,14 @@ const exportCSV = async (includeEmbeddings = false) => {
                       <span class="activity-detail-card__column-label"
                         >Before</span
                       >
-                      <pre class="activity-detail-card__value"><code>{{
-                        change.before
-                      }}</code></pre>
+                      <pre class="activity-detail-card__value"><code
+                        v-if="
+                          change.format === 'json' ||
+                          change.format === 'embedding'
+                        "
+                        class="hljs json-highlight"
+                        v-html="highlightJsonValue(change.before)"
+                      ></code><code v-else>{{ change.before }}</code></pre>
                     </div>
 
                     <div
@@ -6951,9 +6999,14 @@ const exportCSV = async (includeEmbeddings = false) => {
                       <span class="activity-detail-card__column-label"
                         >After</span
                       >
-                      <pre class="activity-detail-card__value"><code>{{
-                        change.after
-                      }}</code></pre>
+                      <pre class="activity-detail-card__value"><code
+                        v-if="
+                          change.format === 'json' ||
+                          change.format === 'embedding'
+                        "
+                        class="hljs json-highlight"
+                        v-html="highlightJsonValue(change.after)"
+                      ></code><code v-else>{{ change.after }}</code></pre>
                     </div>
                   </div>
                 </section>
@@ -8559,9 +8612,10 @@ const exportCSV = async (includeEmbeddings = false) => {
               {{ result.document || "No document returned." }}
             </p>
 
-            <code class="query-result-card__metadata">{{
-              result.metadata
-            }}</code>
+            <code
+              class="query-result-card__metadata hljs json-highlight"
+              v-html="highlightJsonValue(result.metadata ?? 'null')"
+            ></code>
 
             <div class="query-result-card__actions">
               <button
