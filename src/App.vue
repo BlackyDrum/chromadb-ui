@@ -93,6 +93,7 @@ const showMetricsViewer = ref(false);
 const showActivityLogViewer = ref(false);
 const expandedActivityEntries = ref({});
 const showImportAutoEmbedSettings = ref(false);
+const showQueryAutoEmbedSettings = ref(false);
 const showCreateRecordAutoEmbedSettings = ref(false);
 const bulkMetadataMode = ref("merge");
 const bulkMetadataValue = ref("");
@@ -7619,10 +7620,6 @@ const exportCSV = async (includeEmbeddings = false) => {
                   <div>
                     <p class="section-kicker">Metadata</p>
                     <h4><code>where</code> rules</h4>
-                    <p class="query-filter-builder__copy">
-                      Narrow matches by requiring or excluding specific metadata
-                      key-value pairs in the stored records.
-                    </p>
                   </div>
 
                   <span class="tag-chip">
@@ -7633,6 +7630,11 @@ const exportCSV = async (includeEmbeddings = false) => {
                     }}
                   </span>
                 </div>
+
+                <p class="query-filter-builder__copy">
+                  Narrow matches by requiring or excluding specific metadata
+                  key-value pairs in the stored records.
+                </p>
 
                 <div class="metadata-filter-mode-switch">
                   <button
@@ -7824,10 +7826,6 @@ const exportCSV = async (includeEmbeddings = false) => {
                   <div>
                     <p class="section-kicker">Document text</p>
                     <h4><code>where_document</code> rules</h4>
-                    <p class="query-filter-builder__copy">
-                      Narrow matches by requiring or excluding terms in the
-                      stored document text.
-                    </p>
                   </div>
 
                   <span class="tag-chip">
@@ -7838,6 +7836,11 @@ const exportCSV = async (includeEmbeddings = false) => {
                     }}
                   </span>
                 </div>
+
+                <p class="query-filter-builder__copy">
+                  Narrow matches by requiring or excluding terms in the stored
+                  document text.
+                </p>
 
                 <div class="metadata-filter-mode-switch">
                   <button
@@ -7953,14 +7956,38 @@ const exportCSV = async (includeEmbeddings = false) => {
               <div>
                 <p class="section-kicker">Embedding provider</p>
                 <h3>{{ semanticProviderLabel }}</h3>
-                <p class="semantic-provider-card__copy">
-                  Semantic search works best when the provider model matches the
-                  one that created this collection's embeddings.
-                </p>
               </div>
+
+              <button
+                class="mini-button mini-button--ghost semantic-provider-card__toggle"
+                type="button"
+                :aria-expanded="showQueryAutoEmbedSettings"
+                @click="
+                  showQueryAutoEmbedSettings = !showQueryAutoEmbedSettings
+                "
+              >
+                <span>{{
+                  showQueryAutoEmbedSettings ? "Hide settings" : "Show settings"
+                }}</span>
+                <i
+                  :class="
+                    showQueryAutoEmbedSettings
+                      ? 'pi pi-angle-up'
+                      : 'pi pi-angle-down'
+                  "
+                ></i>
+              </button>
             </div>
 
-            <div class="semantic-provider-card__status">
+            <p class="semantic-provider-card__copy">
+              Semantic search works best when the provider model matches the one
+              that created this collection's embeddings.
+            </p>
+
+            <div
+              v-if="showQueryAutoEmbedSettings"
+              class="semantic-provider-card__status"
+            >
               <span class="tag-chip semantic-provider-card__status-chip">
                 <i
                   :class="
@@ -7977,7 +8004,10 @@ const exportCSV = async (includeEmbeddings = false) => {
               </p>
             </div>
 
-            <div class="semantic-provider-card__surface">
+            <div
+              v-if="showQueryAutoEmbedSettings"
+              class="semantic-provider-card__surface"
+            >
               <div class="query-mode-switch semantic-provider-switch">
                 <button
                   class="query-mode-switch__button"
@@ -8086,7 +8116,7 @@ const exportCSV = async (includeEmbeddings = false) => {
               </div>
             </div>
 
-            <p class="query-panel__hint">
+            <p v-if="showQueryAutoEmbedSettings" class="query-panel__hint">
               Current provider: {{ semanticProviderLabel }} /
               {{ semanticProviderModelLabel }}
             </p>
