@@ -102,6 +102,12 @@ const metadataFilterFocusedRuleId = ref(null);
 const queryMode = ref("semantic");
 const queryText = ref("");
 const queryEmbedding = ref("");
+const showQueryFilters = ref(false);
+const queryWhereMode = ref("all");
+const queryWhereRules = ref([]);
+const queryWhereFocusedRuleId = ref(null);
+const queryWhereDocumentMode = ref("all");
+const queryWhereDocumentRules = ref([]);
 const queryResultCount = ref(5);
 const queryResults = ref([]);
 const lastQuerySummary = ref("");
@@ -175,6 +181,25 @@ const METADATA_FILTER_OPERATORS = [
   { label: "Contains", value: "contains" },
   { label: "Exists", value: "exists" },
   { label: "Missing", value: "missing" },
+];
+const QUERY_WHERE_OPERATORS = [
+  { label: "Equals", value: "eq" },
+  { label: "Not equal", value: "ne" },
+  { label: "Greater than", value: "gt" },
+  { label: "Greater or equal", value: "gte" },
+  { label: "Less than", value: "lt" },
+  { label: "Less or equal", value: "lte" },
+];
+const QUERY_FILTER_VALUE_TYPES = [
+  { label: "Text", value: "text" },
+  { label: "Number", value: "number" },
+  { label: "True / false", value: "boolean" },
+];
+const QUERY_WHERE_DOCUMENT_OPERATORS = [
+  { label: "Contains text", value: "contains" },
+  { label: "Does not contain", value: "not_contains" },
+  { label: "Matches regex", value: "regex" },
+  { label: "Does not match regex", value: "not_regex" },
 ];
 const IMPORT_EXAMPLE_PAYLOAD = `[
   {
@@ -291,8 +316,82 @@ const createMetadataFilterRule = (overrides = {}) => ({
   ...overrides,
 });
 
+const getQueryWhereForcedValueType = (operator) => {
+  return ["gt", "gte", "lt", "lte"].includes(operator) ? "number" : null;
+};
+
+const normalizeQueryWhereValueType = (valueType, operator = "eq") => {
+  const forcedValueType = getQueryWhereForcedValueType(operator);
+
+  if (forcedValueType) {
+    return forcedValueType;
+  }
+
+  return QUERY_FILTER_VALUE_TYPES.some((entry) => entry.value === valueType)
+    ? valueType
+    : "text";
+};
+
+const normalizeQueryWhereValue = (value, valueType) => {
+  if (valueType === "boolean") {
+    return `${value}` === "false" ? "false" : "true";
+  }
+
+  return value === null || value === undefined ? "" : `${value}`;
+};
+
+const createQueryWhereRule = (overrides = {}) => {
+  const operator = QUERY_WHERE_OPERATORS.some(
+    (entry) => entry.value === overrides?.operator,
+  )
+    ? overrides.operator
+    : "eq";
+  const valueType = normalizeQueryWhereValueType(
+    overrides?.valueType,
+    operator,
+  );
+
+  return {
+    id: overrides?.id ?? `query-where-${(metadataFilterRuleSequence += 1)}`,
+    key: `${overrides?.key ?? ""}`,
+    operator,
+    valueType,
+    value: normalizeQueryWhereValue(overrides?.value, valueType),
+  };
+};
+
+const createQueryWhereDocumentRule = (overrides = {}) => ({
+  id:
+    overrides?.id ??
+    `query-where-document-${(metadataFilterRuleSequence += 1)}`,
+  operator: QUERY_WHERE_DOCUMENT_OPERATORS.some(
+    (entry) => entry.value === overrides?.operator,
+  )
+    ? overrides.operator
+    : "contains",
+  value: `${overrides?.value ?? ""}`,
+});
+
 const doesMetadataFilterOperatorNeedValue = (operator) => {
   return operator !== "exists" && operator !== "missing";
+};
+
+const isQueryWhereRuleComplete = (rule) => {
+  const normalizedKey = `${rule?.key ?? ""}`.trim();
+
+  if (!normalizedKey) return false;
+
+  if (
+    normalizeQueryWhereValueType(rule?.valueType, rule?.operator) === "boolean"
+  ) {
+    return true;
+  }
+
+  return `${rule?.value ?? ""}`.trim().length > 0;
+};
+
+const isQueryWhereDocumentRuleComplete = (rule) => {
+  return `${rule?.value ?? ""}`.trim().length > 0;
 };
 
 const normalizeMetadataFilterValue = (value) => {
@@ -381,6 +480,264 @@ const doesMetadataFilterRuleMatch = (row, rule) => {
   }
 
   return normalizedMetadataValue === normalizedRuleValue;
+};
+
+const addQueryWhereRule = () => {
+  queryWhereRules.value = [...queryWhereRules.value, createQueryWhereRule()];
+};
+
+const clearQueryWhereRules = () => {
+  queryWhereMode.value = "all";
+  queryWhereRules.value = [];
+  queryWhereFocusedRuleId.value = null;
+};
+
+const removeQueryWhereRule = (ruleId) => {
+  queryWhereRules.value = queryWhereRules.value.filter(
+    (rule) => rule.id !== ruleId,
+  );
+};
+
+const addQueryWhereDocumentRule = () => {
+  queryWhereDocumentRules.value = [
+    ...queryWhereDocumentRules.value,
+    createQueryWhereDocumentRule(),
+  ];
+};
+
+const clearQueryWhereDocumentRules = () => {
+  queryWhereDocumentMode.value = "all";
+  queryWhereDocumentRules.value = [];
+};
+
+const removeQueryWhereDocumentRule = (ruleId) => {
+  queryWhereDocumentRules.value = queryWhereDocumentRules.value.filter(
+    (rule) => rule.id !== ruleId,
+  );
+};
+
+const handleQueryWhereOperatorChange = (rule) => {
+  Object.assign(rule, createQueryWhereRule(rule));
+};
+
+const handleQueryWhereValueTypeChange = (rule) => {
+  Object.assign(rule, createQueryWhereRule(rule));
+};
+
+const getQueryWhereKeySuggestions = (rule) => {
+  const normalizedKey = `${rule?.key ?? ""}`.trim().toLowerCase();
+
+  if (!normalizedKey) {
+    return metadataFilterKeyOptions.value.slice(0, 8);
+  }
+
+  return metadataFilterKeyOptions.value
+    .filter((key) => key.toLowerCase().includes(normalizedKey))
+    .slice(0, 8);
+};
+
+const shouldShowQueryWhereKeySuggestions = (rule) => {
+  return (
+    queryWhereFocusedRuleId.value === rule.id &&
+    getQueryWhereKeySuggestions(rule).length > 0
+  );
+};
+
+const handleQueryWhereKeyFocus = (ruleId) => {
+  queryWhereFocusedRuleId.value = ruleId;
+};
+
+const handleQueryWhereKeyBlur = () => {
+  window.setTimeout(() => {
+    queryWhereFocusedRuleId.value = null;
+  }, 80);
+};
+
+const selectQueryWhereKey = (rule, key) => {
+  rule.key = key;
+  queryWhereFocusedRuleId.value = null;
+};
+
+const parseStoredQueryFilterObject = (value) => {
+  const trimmedValue = `${value ?? ""}`.trim();
+
+  if (!trimmedValue || trimmedValue === "null") {
+    return null;
+  }
+
+  try {
+    const parsedValue = JSON.parse(trimmedValue);
+
+    return parsedValue &&
+      typeof parsedValue === "object" &&
+      !Array.isArray(parsedValue)
+      ? parsedValue
+      : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const inferQueryWhereValueType = (value, operator = "eq") => {
+  const forcedValueType = getQueryWhereForcedValueType(operator);
+
+  if (forcedValueType) {
+    return forcedValueType;
+  }
+
+  if (typeof value === "boolean") {
+    return "boolean";
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return "number";
+  }
+
+  return "text";
+};
+
+const formatStoredQueryWhereValue = (value, valueType) => {
+  if (valueType === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  return value === null || value === undefined ? "" : `${value}`;
+};
+
+const normalizeStoredQueryWhereRules = (rules) => {
+  return Array.isArray(rules)
+    ? rules.map((rule) => createQueryWhereRule(rule))
+    : [];
+};
+
+const normalizeStoredQueryWhereDocumentRules = (rules) => {
+  return Array.isArray(rules)
+    ? rules.map((rule) => createQueryWhereDocumentRule(rule))
+    : [];
+};
+
+const parseLegacyQueryWhereState = (value) => {
+  const parsedValue = parseStoredQueryFilterObject(value);
+
+  if (!parsedValue) {
+    return {
+      mode: "all",
+      rules: [],
+    };
+  }
+
+  const normalizedMode = Array.isArray(parsedValue.$or) ? "any" : "all";
+  const clauses = Array.isArray(parsedValue.$and)
+    ? parsedValue.$and
+    : Array.isArray(parsedValue.$or)
+      ? parsedValue.$or
+      : [parsedValue];
+
+  const rules = clauses
+    .map((clause) => {
+      if (!isPlainMetadataObject(clause)) return null;
+
+      const clauseEntries = Object.entries(clause);
+
+      if (clauseEntries.length !== 1) return null;
+
+      const [key, rawCondition] = clauseEntries[0];
+
+      if (!`${key ?? ""}`.trim()) return null;
+
+      if (isPlainMetadataObject(rawCondition)) {
+        const conditionEntries = Object.entries(rawCondition);
+
+        if (conditionEntries.length !== 1) return null;
+
+        const [operatorToken, operatorValue] = conditionEntries[0];
+        const operatorMap = {
+          $eq: "eq",
+          $ne: "ne",
+          $gt: "gt",
+          $gte: "gte",
+          $lt: "lt",
+          $lte: "lte",
+        };
+        const operator = operatorMap[operatorToken];
+
+        if (!operator) return null;
+
+        const valueType = inferQueryWhereValueType(operatorValue, operator);
+
+        return createQueryWhereRule({
+          key,
+          operator,
+          valueType,
+          value: formatStoredQueryWhereValue(operatorValue, valueType),
+        });
+      }
+
+      const valueType = inferQueryWhereValueType(rawCondition, "eq");
+
+      return createQueryWhereRule({
+        key,
+        operator: "eq",
+        valueType,
+        value: formatStoredQueryWhereValue(rawCondition, valueType),
+      });
+    })
+    .filter(Boolean);
+
+  return {
+    mode: normalizedMode,
+    rules,
+  };
+};
+
+const parseLegacyQueryWhereDocumentState = (value) => {
+  const parsedValue = parseStoredQueryFilterObject(value);
+
+  if (!parsedValue) {
+    return {
+      mode: "all",
+      rules: [],
+    };
+  }
+
+  const normalizedMode = Array.isArray(parsedValue.$or) ? "any" : "all";
+  const clauses = Array.isArray(parsedValue.$and)
+    ? parsedValue.$and
+    : Array.isArray(parsedValue.$or)
+      ? parsedValue.$or
+      : [parsedValue];
+
+  const operatorMap = {
+    $contains: "contains",
+    $not_contains: "not_contains",
+    $regex: "regex",
+    $not_regex: "not_regex",
+  };
+
+  const rules = clauses
+    .map((clause) => {
+      if (!isPlainMetadataObject(clause)) return null;
+
+      const clauseEntries = Object.entries(clause);
+
+      if (clauseEntries.length !== 1) return null;
+
+      const [operatorToken, operatorValue] = clauseEntries[0];
+      const operator = operatorMap[operatorToken];
+
+      if (!operator || typeof operatorValue !== "string") return null;
+
+      return createQueryWhereDocumentRule({
+        operator,
+        value: operatorValue,
+      });
+    })
+    .filter(Boolean);
+
+  return {
+    mode: normalizedMode,
+    rules,
+  };
 };
 
 const countWords = (value) => {
@@ -1244,6 +1601,49 @@ const dashboardMetrics = computed(() => {
 
 const hasQueryResults = computed(() => queryResults.value.length > 0);
 
+const activeQueryWhereRules = computed(() => {
+  return queryWhereRules.value.filter(isQueryWhereRuleComplete);
+});
+
+const activeQueryWhereDocumentRules = computed(() => {
+  return queryWhereDocumentRules.value.filter(isQueryWhereDocumentRuleComplete);
+});
+
+const activeQueryFilterCount = computed(() => {
+  return (
+    activeQueryWhereRules.value.length +
+    activeQueryWhereDocumentRules.value.length
+  );
+});
+
+const queryFilterStatusLabel = computed(() => {
+  return activeQueryFilterCount.value
+    ? `${formatNumber(activeQueryFilterCount.value)} active`
+    : "Optional";
+});
+
+const queryFilterStatusCopy = computed(() => {
+  const activeFilterSections = [];
+
+  if (activeQueryWhereRules.value.length) {
+    activeFilterSections.push(
+      `${formatNumber(activeQueryWhereRules.value.length)} where ${pluralize(activeQueryWhereRules.value.length, "rule")}`,
+    );
+  }
+
+  if (activeQueryWhereDocumentRules.value.length) {
+    activeFilterSections.push(
+      `${formatNumber(activeQueryWhereDocumentRules.value.length)} where_document ${pluralize(activeQueryWhereDocumentRules.value.length, "rule")}`,
+    );
+  }
+
+  if (!activeFilterSections.length) {
+    return "Add metadata or document filters to narrow the candidate set before Chroma ranks results.";
+  }
+
+  return `Active query filters: ${activeFilterSections.join(" and ")}.`;
+});
+
 const currentCollectionEmbeddingDimension = computed(() => {
   if (!currentCollection.value) return null;
 
@@ -1572,11 +1972,43 @@ const retrieveQueryHistory = () => {
   try {
     const parsedHistory = JSON.parse(storedQueryHistory);
     queryHistory.value = Array.isArray(parsedHistory)
-      ? parsedHistory.map((entry) => ({
-          ...entry,
-          mode: entry?.mode === "embedding" ? "embedding" : "semantic",
-          provider: entry?.provider === "ollama" ? "ollama" : "openai",
-        }))
+      ? parsedHistory.map((entry) => {
+          const legacyWhereState = parseLegacyQueryWhereState(entry?.whereText);
+          const legacyWhereDocumentState = parseLegacyQueryWhereDocumentState(
+            entry?.whereDocumentText,
+          );
+          const storedWhereRules = normalizeStoredQueryWhereRules(
+            entry?.whereRules,
+          );
+          const storedWhereDocumentRules =
+            normalizeStoredQueryWhereDocumentRules(entry?.whereDocumentRules);
+
+          return {
+            ...entry,
+            mode: entry?.mode === "embedding" ? "embedding" : "semantic",
+            provider: entry?.provider === "ollama" ? "ollama" : "openai",
+            whereText: `${entry?.whereText ?? ""}`.trim(),
+            whereDocumentText: `${entry?.whereDocumentText ?? ""}`.trim(),
+            whereMode:
+              entry?.whereMode === "any"
+                ? "any"
+                : legacyWhereState.mode === "any"
+                  ? "any"
+                  : "all",
+            whereRules: storedWhereRules.length
+              ? storedWhereRules
+              : legacyWhereState.rules,
+            whereDocumentMode:
+              entry?.whereDocumentMode === "any"
+                ? "any"
+                : legacyWhereDocumentState.mode === "any"
+                  ? "any"
+                  : "all",
+            whereDocumentRules: storedWhereDocumentRules.length
+              ? storedWhereDocumentRules
+              : legacyWhereDocumentState.rules,
+          };
+        })
       : [];
   } catch (_) {
     queryHistory.value = [];
@@ -2543,6 +2975,154 @@ const parseQueryEmbedding = (value) => {
   return vector;
 };
 
+const parseQueryWhereRuleValue = (rule) => {
+  const normalizedValueType = normalizeQueryWhereValueType(
+    rule?.valueType,
+    rule?.operator,
+  );
+  const trimmedValue = `${rule?.value ?? ""}`.trim();
+
+  if (normalizedValueType === "boolean") {
+    return trimmedValue === "false" ? false : true;
+  }
+
+  if (!trimmedValue) {
+    throw new Error(
+      "Complete or remove every metadata where rule before querying.",
+    );
+  }
+
+  if (normalizedValueType === "number") {
+    const parsedValue = Number(trimmedValue);
+
+    if (!Number.isFinite(parsedValue)) {
+      throw new Error(
+        "Metadata where rules using numeric comparison need a valid number.",
+      );
+    }
+
+    return parsedValue;
+  }
+
+  return trimmedValue;
+};
+
+const buildCompoundQueryFilter = (clauses, mode = "all") => {
+  if (!clauses.length) {
+    return null;
+  }
+
+  if (clauses.length === 1) {
+    return clauses[0];
+  }
+
+  return {
+    [mode === "any" ? "$or" : "$and"]: clauses,
+  };
+};
+
+const buildQueryWhereFilter = () => {
+  const clauses = activeQueryWhereRules.value.map((rule) => ({
+    [`${rule.key ?? ""}`.trim()]: {
+      [`$${rule.operator}`]: parseQueryWhereRuleValue(rule),
+    },
+  }));
+
+  return buildCompoundQueryFilter(clauses, queryWhereMode.value);
+};
+
+const buildQueryWhereDocumentFilter = () => {
+  const clauses = activeQueryWhereDocumentRules.value.map((rule) => {
+    const trimmedValue = `${rule?.value ?? ""}`.trim();
+
+    if (!trimmedValue) {
+      throw new Error(
+        "Complete or remove every where_document rule before querying.",
+      );
+    }
+
+    return {
+      [`$${rule.operator}`]: trimmedValue,
+    };
+  });
+
+  return buildCompoundQueryFilter(clauses, queryWhereDocumentMode.value);
+};
+
+const buildStoredQueryWhereRules = () => {
+  return activeQueryWhereRules.value.map((rule) => {
+    const normalizedRule = createQueryWhereRule(rule);
+
+    return {
+      key: `${normalizedRule.key ?? ""}`.trim(),
+      operator: normalizedRule.operator,
+      valueType: normalizeQueryWhereValueType(
+        normalizedRule.valueType,
+        normalizedRule.operator,
+      ),
+      value: normalizeQueryWhereValue(
+        normalizedRule.value,
+        normalizeQueryWhereValueType(
+          normalizedRule.valueType,
+          normalizedRule.operator,
+        ),
+      ),
+    };
+  });
+};
+
+const buildStoredQueryWhereDocumentRules = () => {
+  return activeQueryWhereDocumentRules.value.map((rule) => ({
+    operator: rule.operator,
+    value: `${rule.value ?? ""}`.trim(),
+  }));
+};
+
+const getQueryFilterSummarySuffix = ({
+  where = null,
+  whereDocument = null,
+} = {}) => {
+  const activeFilters = [];
+
+  if (where !== null) {
+    activeFilters.push("where");
+  }
+
+  if (whereDocument !== null) {
+    activeFilters.push("where_document");
+  }
+
+  return activeFilters.length ? ` - ${activeFilters.join(" + ")}` : "";
+};
+
+const getQueryHistoryFilterLabel = (entry) => {
+  const labels = [];
+  const whereRuleCount = Array.isArray(entry?.whereRules)
+    ? entry.whereRules.length
+    : `${entry?.whereText ?? ""}`.trim()
+      ? 1
+      : 0;
+  const whereDocumentRuleCount = Array.isArray(entry?.whereDocumentRules)
+    ? entry.whereDocumentRules.length
+    : `${entry?.whereDocumentText ?? ""}`.trim()
+      ? 1
+      : 0;
+
+  if (whereRuleCount) {
+    labels.push(
+      `${formatNumber(whereRuleCount)} where ${pluralize(whereRuleCount, "rule")}`,
+    );
+  }
+
+  if (whereDocumentRuleCount) {
+    labels.push(
+      `${formatNumber(whereDocumentRuleCount)} where_document ${pluralize(whereDocumentRuleCount, "rule")}`,
+    );
+  }
+
+  return labels.join(" • ");
+};
+
 const normalizeUrlBase = (value, fallbackValue) => {
   const trimmedValue = `${value ?? ""}`.trim();
   return (trimmedValue || fallbackValue).replace(/\/+$/, "");
@@ -2881,16 +3461,25 @@ const ensureRecordsHaveEmbeddings = async (
   };
 };
 
-const executeVectorQuery = async (embedding, resultCount, matchType) => {
+const executeVectorQuery = async (
+  embedding,
+  resultCount,
+  matchType,
+  { where = null, whereDocument = null } = {},
+) => {
   if (!currentCollection.value) return;
+
+  const queryPayload = {
+    query_embeddings: [embedding],
+    n_results: resultCount,
+    include: ["documents", "metadatas", "distances"],
+    ...(where !== null ? { where } : {}),
+    ...(whereDocument !== null ? { where_document: whereDocument } : {}),
+  };
 
   const response = await axios.post(
     `${collectionBaseUrl.value}/${currentCollection.value.id}/query`,
-    {
-      query_embeddings: [embedding],
-      n_results: resultCount,
-      include: ["documents", "metadatas", "distances"],
-    },
+    queryPayload,
   );
 
   const ids = response.data?.ids?.[0] ?? [];
@@ -2945,6 +3534,16 @@ const applyQueryHistoryEntry = (entry) => {
   queryResultCount.value = entry.resultCount;
   queryText.value = entry.mode === "embedding" ? "" : entry.value;
   queryEmbedding.value = entry.mode === "embedding" ? entry.value : "";
+  queryWhereMode.value = entry?.whereMode === "any" ? "any" : "all";
+  queryWhereRules.value = normalizeStoredQueryWhereRules(entry?.whereRules);
+  queryWhereDocumentMode.value =
+    entry?.whereDocumentMode === "any" ? "any" : "all";
+  queryWhereDocumentRules.value = normalizeStoredQueryWhereDocumentRules(
+    entry?.whereDocumentRules,
+  );
+  showQueryFilters.value = Boolean(
+    queryWhereRules.value.length || queryWhereDocumentRules.value.length,
+  );
   lastQuerySummary.value = entry.summary;
 
   if (entry.mode === "embedding") {
@@ -3481,6 +4080,12 @@ const runCollectionQuery = async () => {
 
   const resultCount = Math.max(1, Number(queryResultCount.value) || 5);
   let historyEntry = null;
+  let parsedWhere = null;
+  let parsedWhereDocument = null;
+  let normalizedWhereText = "";
+  let normalizedWhereDocumentText = "";
+  let storedWhereRules = [];
+  let storedWhereDocumentRules = [];
 
   if (queryMode.value === "semantic" && !queryText.value.trim()) {
     toast.add({
@@ -3488,6 +4093,51 @@ const runCollectionQuery = async () => {
       summary: "Missing semantic query",
       detail: "Enter text before running a semantic search.",
       life: 4000,
+    });
+    return;
+  }
+
+  if (queryWhereRules.value.some((rule) => !isQueryWhereRuleComplete(rule))) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid query filter",
+      detail: "Complete or remove each metadata where rule before querying.",
+      life: 5000,
+    });
+    return;
+  }
+
+  if (
+    queryWhereDocumentRules.value.some(
+      (rule) => !isQueryWhereDocumentRuleComplete(rule),
+    )
+  ) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid query filter",
+      detail: "Complete or remove each where_document rule before querying.",
+      life: 5000,
+    });
+    return;
+  }
+
+  try {
+    parsedWhere = buildQueryWhereFilter();
+    parsedWhereDocument = buildQueryWhereDocumentFilter();
+    normalizedWhereText =
+      parsedWhere === null ? "" : safeStringify(parsedWhere, false);
+    normalizedWhereDocumentText =
+      parsedWhereDocument === null
+        ? ""
+        : safeStringify(parsedWhereDocument, false);
+    storedWhereRules = buildStoredQueryWhereRules();
+    storedWhereDocumentRules = buildStoredQueryWhereDocumentRules();
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid query filter",
+      detail: error.message,
+      life: 5000,
     });
     return;
   }
@@ -3513,10 +4163,14 @@ const runCollectionQuery = async () => {
       const trimmedQueryText = queryText.value.trim();
       const generatedQuery =
         await generateSemanticQueryEmbedding(trimmedQueryText);
+      const filterSummarySuffix = getQueryFilterSummarySuffix({
+        where: parsedWhere,
+        whereDocument: parsedWhereDocument,
+      });
 
-      lastQuerySummary.value = `Semantic query - ${generatedQuery.providerLabel} - ${generatedQuery.providerModel} - ${formatNumber(generatedQuery.embedding.length)} dims`;
+      lastQuerySummary.value = `Semantic query - ${generatedQuery.providerLabel} - ${generatedQuery.providerModel} - ${formatNumber(generatedQuery.embedding.length)} dims${filterSummarySuffix}`;
       historyEntry = {
-        id: `${currentCollection.value.id}:semantic:${generatedQuery.provider}:${generatedQuery.providerModel}:${trimmedQueryText.toLowerCase()}:${resultCount}`,
+        id: `${currentCollection.value.id}:semantic:${generatedQuery.provider}:${generatedQuery.providerModel}:${trimmedQueryText.toLowerCase()}:${resultCount}:${normalizedWhereText}:${normalizedWhereDocumentText}`,
         collectionId: currentCollection.value.id,
         collectionName: currentCollection.value.name,
         mode: "semantic",
@@ -3524,6 +4178,12 @@ const runCollectionQuery = async () => {
         preview: truncateText(trimmedQueryText, 72),
         provider: generatedQuery.provider,
         providerModel: generatedQuery.providerModel,
+        whereMode: queryWhereMode.value,
+        whereRules: storedWhereRules,
+        whereText: normalizedWhereText,
+        whereDocumentMode: queryWhereDocumentMode.value,
+        whereDocumentRules: storedWhereDocumentRules,
+        whereDocumentText: normalizedWhereDocumentText,
         resultCount,
         summary: lastQuerySummary.value,
         timestamp: new Date().toISOString(),
@@ -3533,6 +4193,10 @@ const runCollectionQuery = async () => {
         generatedQuery.embedding,
         resultCount,
         "semantic",
+        {
+          where: parsedWhere,
+          whereDocument: parsedWhereDocument,
+        },
       );
       updateCollectionEmbeddingDimension(
         currentCollection.value.id,
@@ -3540,10 +4204,14 @@ const runCollectionQuery = async () => {
       );
     } else {
       const parsedEmbedding = parseQueryEmbedding(queryEmbedding.value);
+      const filterSummarySuffix = getQueryFilterSummarySuffix({
+        where: parsedWhere,
+        whereDocument: parsedWhereDocument,
+      });
 
-      lastQuerySummary.value = `Embedding query - ${formatNumber(parsedEmbedding.length)} dims`;
+      lastQuerySummary.value = `Embedding query - ${formatNumber(parsedEmbedding.length)} dims${filterSummarySuffix}`;
       historyEntry = {
-        id: `${currentCollection.value.id}:embedding:${safeStringify(parsedEmbedding)}:${resultCount}`,
+        id: `${currentCollection.value.id}:embedding:${safeStringify(parsedEmbedding)}:${resultCount}:${normalizedWhereText}:${normalizedWhereDocumentText}`,
         collectionId: currentCollection.value.id,
         collectionName: currentCollection.value.name,
         mode: "embedding",
@@ -3555,12 +4223,21 @@ const runCollectionQuery = async () => {
             .join(", "),
           48,
         )}`,
+        whereMode: queryWhereMode.value,
+        whereRules: storedWhereRules,
+        whereText: normalizedWhereText,
+        whereDocumentMode: queryWhereDocumentMode.value,
+        whereDocumentRules: storedWhereDocumentRules,
+        whereDocumentText: normalizedWhereDocumentText,
         resultCount,
         summary: lastQuerySummary.value,
         timestamp: new Date().toISOString(),
       };
 
-      await executeVectorQuery(parsedEmbedding, resultCount, "embedding");
+      await executeVectorQuery(parsedEmbedding, resultCount, "embedding", {
+        where: parsedWhere,
+        whereDocument: parsedWhereDocument,
+      });
       updateCollectionEmbeddingDimension(
         currentCollection.value.id,
         parsedEmbedding.length,
@@ -6901,6 +7578,373 @@ const exportCSV = async (includeEmbeddings = false) => {
             ></textarea>
           </label>
 
+          <section class="semantic-provider-card">
+            <div class="semantic-provider-card__header">
+              <div>
+                <p class="section-kicker">Query filters</p>
+                <h3>Optional Chroma filters</h3>
+              </div>
+
+              <button
+                class="mini-button mini-button--ghost semantic-provider-card__toggle"
+                type="button"
+                :aria-expanded="showQueryFilters"
+                @click="showQueryFilters = !showQueryFilters"
+              >
+                <span>{{
+                  showQueryFilters ? "Hide filters" : "Show filters"
+                }}</span>
+                <i
+                  :class="
+                    showQueryFilters ? 'pi pi-angle-up' : 'pi pi-angle-down'
+                  "
+                ></i>
+              </button>
+            </div>
+
+            <div class="semantic-provider-card__status">
+              <span class="tag-chip semantic-provider-card__status-chip">
+                <i class="pi pi-filter"></i>
+                <span>{{ queryFilterStatusLabel }}</span>
+              </span>
+
+              <p class="semantic-provider-card__status-copy">
+                {{ queryFilterStatusCopy }}
+              </p>
+            </div>
+
+            <div v-if="showQueryFilters" class="query-filter-builder">
+              <section class="query-filter-builder__section">
+                <div class="query-filter-builder__header">
+                  <div>
+                    <p class="section-kicker">Metadata</p>
+                    <h4><code>where</code> rules</h4>
+                    <p class="query-filter-builder__copy">
+                      Narrow matches by requiring or excluding specific metadata
+                      key-value pairs in the stored records.
+                    </p>
+                  </div>
+
+                  <span class="tag-chip">
+                    {{
+                      activeQueryWhereRules.length
+                        ? `${activeQueryWhereRules.length} active`
+                        : "Optional"
+                    }}
+                  </span>
+                </div>
+
+                <div class="metadata-filter-mode-switch">
+                  <button
+                    class="metadata-filter-mode-switch__button"
+                    :class="{
+                      'metadata-filter-mode-switch__button--active':
+                        queryWhereMode === 'all',
+                    }"
+                    type="button"
+                    @click="queryWhereMode = 'all'"
+                  >
+                    Match all
+                  </button>
+
+                  <button
+                    class="metadata-filter-mode-switch__button"
+                    :class="{
+                      'metadata-filter-mode-switch__button--active':
+                        queryWhereMode === 'any',
+                    }"
+                    type="button"
+                    @click="queryWhereMode = 'any'"
+                  >
+                    Match any
+                  </button>
+                </div>
+
+                <div class="metadata-filter-menu__toolbar">
+                  <button
+                    class="mini-button"
+                    type="button"
+                    @click="addQueryWhereRule"
+                  >
+                    <i class="pi pi-plus"></i>
+                    <span>Add metadata rule</span>
+                  </button>
+
+                  <button
+                    class="mini-button mini-button--ghost"
+                    type="button"
+                    :disabled="!queryWhereRules.length"
+                    @click="clearQueryWhereRules"
+                  >
+                    Clear metadata rules
+                  </button>
+                </div>
+
+                <div
+                  v-if="queryWhereRules.length"
+                  class="metadata-filter-rule-list query-filter-rule-list"
+                >
+                  <article
+                    v-for="rule in queryWhereRules"
+                    :key="rule.id"
+                    class="metadata-filter-rule"
+                  >
+                    <div class="metadata-filter-rule__fields">
+                      <label
+                        class="field field--compact metadata-filter-key-field"
+                      >
+                        <span class="field__label">Key</span>
+                        <div class="metadata-filter-key-input-wrap">
+                          <input
+                            v-model="rule.key"
+                            type="text"
+                            placeholder="Enter key"
+                            @focus="handleQueryWhereKeyFocus(rule.id)"
+                            @blur="handleQueryWhereKeyBlur"
+                          />
+
+                          <div
+                            v-if="shouldShowQueryWhereKeySuggestions(rule)"
+                            class="metadata-filter-key-dropdown"
+                          >
+                            <button
+                              v-for="suggestion in getQueryWhereKeySuggestions(
+                                rule,
+                              )"
+                              :key="suggestion"
+                              class="metadata-filter-key-option"
+                              type="button"
+                              @mousedown.prevent="
+                                selectQueryWhereKey(rule, suggestion)
+                              "
+                            >
+                              <span>{{ suggestion }}</span>
+                              <small>Detected key</small>
+                            </button>
+                          </div>
+                        </div>
+                      </label>
+
+                      <label class="field field--compact">
+                        <span class="field__label">Operator</span>
+                        <select
+                          v-model="rule.operator"
+                          class="metadata-filter-select"
+                          @change="handleQueryWhereOperatorChange(rule)"
+                        >
+                          <option
+                            v-for="operator in QUERY_WHERE_OPERATORS"
+                            :key="operator.value"
+                            :value="operator.value"
+                          >
+                            {{ operator.label }}
+                          </option>
+                        </select>
+                      </label>
+
+                      <label class="field field--compact">
+                        <span class="field__label">Value type</span>
+                        <select
+                          v-model="rule.valueType"
+                          class="metadata-filter-select"
+                          :disabled="
+                            Boolean(getQueryWhereForcedValueType(rule.operator))
+                          "
+                          @change="handleQueryWhereValueTypeChange(rule)"
+                        >
+                          <option
+                            v-for="valueType in QUERY_FILTER_VALUE_TYPES"
+                            :key="valueType.value"
+                            :value="valueType.value"
+                          >
+                            {{ valueType.label }}
+                          </option>
+                        </select>
+                      </label>
+
+                      <label class="field field--compact">
+                        <span class="field__label">Value</span>
+                        <select
+                          v-if="
+                            normalizeQueryWhereValueType(
+                              rule.valueType,
+                              rule.operator,
+                            ) === 'boolean'
+                          "
+                          v-model="rule.value"
+                          class="metadata-filter-select"
+                        >
+                          <option value="true">True</option>
+                          <option value="false">False</option>
+                        </select>
+
+                        <input
+                          v-else
+                          v-model="rule.value"
+                          :type="
+                            normalizeQueryWhereValueType(
+                              rule.valueType,
+                              rule.operator,
+                            ) === 'number'
+                              ? 'number'
+                              : 'text'
+                          "
+                          :placeholder="
+                            normalizeQueryWhereValueType(
+                              rule.valueType,
+                              rule.operator,
+                            ) === 'number'
+                              ? 'Enter number'
+                              : 'Enter value'
+                          "
+                        />
+                      </label>
+                    </div>
+
+                    <button
+                      class="mini-button mini-button--ghost mini-button--icon metadata-filter-rule__remove"
+                      type="button"
+                      aria-label="Remove metadata query rule"
+                      @click="removeQueryWhereRule(rule.id)"
+                    >
+                      <i class="pi pi-times"></i>
+                    </button>
+                  </article>
+                </div>
+
+                <div v-else class="metadata-filter-menu__empty">
+                  No metadata query rules yet. Click
+                  <code>Add metadata rule</code> to narrow results before Chroma
+                  ranks them.
+                </div>
+              </section>
+
+              <section class="query-filter-builder__section">
+                <div class="query-filter-builder__header">
+                  <div>
+                    <p class="section-kicker">Document text</p>
+                    <h4><code>where_document</code> rules</h4>
+                    <p class="query-filter-builder__copy">
+                      Narrow matches by requiring or excluding terms in the
+                      stored document text.
+                    </p>
+                  </div>
+
+                  <span class="tag-chip">
+                    {{
+                      activeQueryWhereDocumentRules.length
+                        ? `${activeQueryWhereDocumentRules.length} active`
+                        : "Optional"
+                    }}
+                  </span>
+                </div>
+
+                <div class="metadata-filter-mode-switch">
+                  <button
+                    class="metadata-filter-mode-switch__button"
+                    :class="{
+                      'metadata-filter-mode-switch__button--active':
+                        queryWhereDocumentMode === 'all',
+                    }"
+                    type="button"
+                    @click="queryWhereDocumentMode = 'all'"
+                  >
+                    Match all
+                  </button>
+
+                  <button
+                    class="metadata-filter-mode-switch__button"
+                    :class="{
+                      'metadata-filter-mode-switch__button--active':
+                        queryWhereDocumentMode === 'any',
+                    }"
+                    type="button"
+                    @click="queryWhereDocumentMode = 'any'"
+                  >
+                    Match any
+                  </button>
+                </div>
+
+                <div class="metadata-filter-menu__toolbar">
+                  <button
+                    class="mini-button"
+                    type="button"
+                    @click="addQueryWhereDocumentRule"
+                  >
+                    <i class="pi pi-plus"></i>
+                    <span>Add document rule</span>
+                  </button>
+
+                  <button
+                    class="mini-button mini-button--ghost"
+                    type="button"
+                    :disabled="!queryWhereDocumentRules.length"
+                    @click="clearQueryWhereDocumentRules"
+                  >
+                    Clear document rules
+                  </button>
+                </div>
+
+                <div
+                  v-if="queryWhereDocumentRules.length"
+                  class="metadata-filter-rule-list query-filter-rule-list"
+                >
+                  <article
+                    v-for="rule in queryWhereDocumentRules"
+                    :key="rule.id"
+                    class="metadata-filter-rule"
+                  >
+                    <div class="metadata-filter-rule__fields">
+                      <label class="field field--compact">
+                        <span class="field__label">Operator</span>
+                        <select
+                          v-model="rule.operator"
+                          class="metadata-filter-select"
+                        >
+                          <option
+                            v-for="operator in QUERY_WHERE_DOCUMENT_OPERATORS"
+                            :key="operator.value"
+                            :value="operator.value"
+                          >
+                            {{ operator.label }}
+                          </option>
+                        </select>
+                      </label>
+
+                      <label class="field field--compact">
+                        <span class="field__label">Value</span>
+                        <input
+                          v-model="rule.value"
+                          type="text"
+                          :placeholder="
+                            rule.operator.includes('regex')
+                              ? 'Enter regex pattern'
+                              : 'Enter term'
+                          "
+                        />
+                      </label>
+                    </div>
+
+                    <button
+                      class="mini-button mini-button--ghost mini-button--icon metadata-filter-rule__remove"
+                      type="button"
+                      aria-label="Remove document query rule"
+                      @click="removeQueryWhereDocumentRule(rule.id)"
+                    >
+                      <i class="pi pi-times"></i>
+                    </button>
+                  </article>
+                </div>
+
+                <div v-else class="metadata-filter-menu__empty">
+                  No document query rules yet. Click
+                  <code>Add document rule</code> to narrow results before Chroma
+                  ranks them.
+                </div>
+              </section>
+            </div>
+          </section>
+
           <section
             v-if="queryMode === 'semantic'"
             class="semantic-provider-card"
@@ -7128,6 +8172,13 @@ const exportCSV = async (includeEmbeddings = false) => {
 
               <p class="query-history-card__summary">
                 {{ entry.summary }} • {{ entry.resultCount }} requested
+              </p>
+
+              <p
+                v-if="getQueryHistoryFilterLabel(entry)"
+                class="query-history-card__filters"
+              >
+                Filters: {{ getQueryHistoryFilterLabel(entry) }}
               </p>
 
               <div class="query-history-card__actions">

@@ -1266,6 +1266,12 @@ pre {
   line-height: 1.55;
 }
 
+.query-history-card__filters {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .query-history-card__preview {
   font-size: 0.95rem;
   line-height: 1.5;
@@ -1324,6 +1330,45 @@ pre {
 
 .query-panel__controls {
   align-items: flex-end;
+}
+
+.query-filter-builder {
+  display: grid;
+  gap: 1rem;
+}
+
+.query-filter-builder__section {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.query-filter-builder__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.query-filter-builder__header > div {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.query-filter-builder__header h4 {
+  font-size: 1rem;
+}
+
+.query-filter-builder__copy {
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.query-filter-rule-list {
+  max-height: none;
 }
 
 .query-panel__count {
@@ -3981,6 +4026,7 @@ pre {
   .import-source-card,
   .metadata-filter-menu__toolbar,
   .semantic-provider-card__header,
+  .query-filter-builder__header,
   .query-history__header,
   .query-history-card__top,
   .query-history-card__actions,
