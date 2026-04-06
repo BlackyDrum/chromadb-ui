@@ -114,7 +114,6 @@ const queryWhereDocumentMode = ref("all");
 const queryWhereDocumentRules = ref([]);
 const queryResultCount = ref(5);
 const queryResults = ref([]);
-const expandedQueryResultDocuments = ref({});
 const lastQuerySummary = ref("");
 const hasCompletedQuery = ref(false);
 const queryHistory = ref([]);
@@ -171,8 +170,6 @@ const EMBEDDING_DIALOG_WINDOW_SIZE = 120;
 const EMBEDDING_DIALOG_CHUNK_SIZE = 12;
 const METRICS_EMBEDDING_SAMPLE_SIZE = 24;
 const QUERY_HISTORY_LIMIT = 10;
-const QUERY_RESULT_DOCUMENT_COLLAPSE_LENGTH = 280;
-const QUERY_RESULT_DOCUMENT_COLLAPSE_LINES = 6;
 const ACTIVITY_LOG_LIMIT = 50;
 const ACTIVITY_LOG_ID_PREVIEW_LIMIT = 20;
 const ACTIVITY_LOG_DETAIL_SECTION_LIMIT = 8;
@@ -799,30 +796,6 @@ const truncateText = (value, limit = 80) => {
   if (normalizedValue.length <= limit) return normalizedValue;
 
   return `${normalizedValue.slice(0, Math.max(0, limit - 1))}…`;
-};
-
-const isQueryResultDocumentFoldable = (value) => {
-  const normalizedValue = `${value ?? ""}`.trim();
-
-  if (!normalizedValue) return false;
-
-  return (
-    normalizedValue.length > QUERY_RESULT_DOCUMENT_COLLAPSE_LENGTH ||
-    normalizedValue.split(/\r?\n/).length > QUERY_RESULT_DOCUMENT_COLLAPSE_LINES
-  );
-};
-
-const isQueryResultDocumentExpanded = (id) => {
-  return Boolean(expandedQueryResultDocuments.value[id]);
-};
-
-const toggleQueryResultDocument = (id) => {
-  if (!id) return;
-
-  expandedQueryResultDocuments.value = {
-    ...expandedQueryResultDocuments.value,
-    [id]: !expandedQueryResultDocuments.value[id],
-  };
 };
 
 const formatQueryHistoryTimestamp = (value) => {
@@ -2591,14 +2564,6 @@ watch(
     selectedTableRows.value = selectedTableRows.value.filter((row) =>
       rowIdSet.has(row.id),
     );
-  },
-  { deep: false },
-);
-
-watch(
-  queryResults,
-  () => {
-    expandedQueryResultDocuments.value = {};
   },
   { deep: false },
 );
@@ -8645,34 +8610,10 @@ const exportCSV = async (includeEmbeddings = false) => {
 
             <div class="query-result-card__body">
               <section class="query-result-card__section">
-                <div class="query-result-card__section-header">
-                  <p class="section-kicker query-result-card__label">
-                    Document
-                  </p>
-
-                  <button
-                    v-if="isQueryResultDocumentFoldable(result.document)"
-                    class="mini-button mini-button--ghost mini-button--inline query-result-card__document-toggle"
-                    type="button"
-                    @click="toggleQueryResultDocument(result.id)"
-                  >
-                    <span>{{
-                      isQueryResultDocumentExpanded(result.id)
-                        ? "Show less"
-                        : "Show more"
-                    }}</span>
-                  </button>
-                </div>
+                <p class="section-kicker query-result-card__label">Document</p>
 
                 <div class="query-result-card__document-shell">
-                  <p
-                    class="query-result-card__document"
-                    :class="{
-                      'query-result-card__document--collapsed':
-                        isQueryResultDocumentFoldable(result.document) &&
-                        !isQueryResultDocumentExpanded(result.id),
-                    }"
-                  >
+                  <p class="query-result-card__document">
                     {{ result.document || "No document returned." }}
                   </p>
                 </div>

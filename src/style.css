@@ -1973,13 +1973,6 @@ pre {
   min-height: 0;
 }
 
-.query-result-card__section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
 .query-result-card__label {
   margin: 0;
 }
@@ -1999,13 +1992,15 @@ pre {
 }
 
 .query-result-card__document-shell {
-  flex: 1;
-  min-height: 0;
+  height: calc(1.6em * 6 + 1.7rem);
   padding: 0.85rem 0.95rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0.95rem;
   background: rgba(1, 11, 18, 0.42);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
 .query-result-card__document {
@@ -2016,30 +2011,18 @@ pre {
   word-break: break-word;
 }
 
-.query-result-card__document--collapsed {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
-}
-
-.query-result-card__document-toggle {
-  flex-shrink: 0;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
 .query-result-card__metadata {
-  display: -webkit-box;
+  display: block;
   margin: 0;
-  min-height: calc(1.6em * 5 + 1.7rem);
+  height: calc(1.6em * 5 + 1.7rem);
   padding: 0.85rem 0.95rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0.95rem;
   background: rgba(1, 11, 18, 0.42);
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   color: #a8eed9;
   font-size: 0.82rem;
   line-height: 1.6;
@@ -2048,11 +2031,27 @@ pre {
 }
 
 .query-result-card__metadata.hljs.json-highlight {
-  display: -webkit-box;
+  display: block;
   width: 100%;
   padding: 0.85rem 0.95rem !important;
   background: rgba(1, 11, 18, 0.42) !important;
   box-sizing: border-box;
+}
+
+.query-result-card__document-shell::-webkit-scrollbar,
+.query-result-card__metadata::-webkit-scrollbar {
+  width: 0.45rem;
+}
+
+.query-result-card__document-shell::-webkit-scrollbar-thumb,
+.query-result-card__metadata::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.query-result-card__document-shell::-webkit-scrollbar-track,
+.query-result-card__metadata::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .query-result-card__actions {
