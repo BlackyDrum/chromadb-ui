@@ -18,11 +18,9 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
   <img src="./docs/showcase/05-preview.png" alt="Vector editor" width="31%" />
 </p>
 
-## Demo Preview
+## Demo
 
-You can try the deployed UI preview here:
-
-- [https://blackydrum.github.io/chromadb-ui/](https://blackydrum.github.io/chromadb-ui/)
+You can try the deployed UI [here](https://blackydrum.github.io/chromadb-ui/):
 
 ## What You Can Do In The UI
 
