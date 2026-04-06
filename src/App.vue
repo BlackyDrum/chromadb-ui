@@ -8643,34 +8643,50 @@ const exportCSV = async (includeEmbeddings = false) => {
               <span>{{ getQueryResultLabel(result) }}</span>
             </div>
 
-            <p
-              class="query-result-card__document"
-              :class="{
-                'query-result-card__document--collapsed':
-                  isQueryResultDocumentFoldable(result.document) &&
-                  !isQueryResultDocumentExpanded(result.id),
-              }"
-            >
-              {{ result.document || "No document returned." }}
-            </p>
+            <div class="query-result-card__body">
+              <section class="query-result-card__section">
+                <div class="query-result-card__section-header">
+                  <p class="section-kicker query-result-card__label">
+                    Document
+                  </p>
 
-            <button
-              v-if="isQueryResultDocumentFoldable(result.document)"
-              class="mini-button mini-button--ghost mini-button--inline query-result-card__document-toggle"
-              type="button"
-              @click="toggleQueryResultDocument(result.id)"
-            >
-              <span>{{
-                isQueryResultDocumentExpanded(result.id)
-                  ? "Show less"
-                  : "Show more"
-              }}</span>
-            </button>
+                  <button
+                    v-if="isQueryResultDocumentFoldable(result.document)"
+                    class="mini-button mini-button--ghost mini-button--inline query-result-card__document-toggle"
+                    type="button"
+                    @click="toggleQueryResultDocument(result.id)"
+                  >
+                    <span>{{
+                      isQueryResultDocumentExpanded(result.id)
+                        ? "Show less"
+                        : "Show more"
+                    }}</span>
+                  </button>
+                </div>
 
-            <code
-              class="query-result-card__metadata hljs json-highlight"
-              v-html="highlightJsonValue(result.metadata ?? 'null')"
-            ></code>
+                <div class="query-result-card__document-shell">
+                  <p
+                    class="query-result-card__document"
+                    :class="{
+                      'query-result-card__document--collapsed':
+                        isQueryResultDocumentFoldable(result.document) &&
+                        !isQueryResultDocumentExpanded(result.id),
+                    }"
+                  >
+                    {{ result.document || "No document returned." }}
+                  </p>
+                </div>
+              </section>
+
+              <section class="query-result-card__section">
+                <p class="section-kicker query-result-card__label">Metadata</p>
+
+                <code
+                  class="query-result-card__metadata hljs json-highlight"
+                  v-html="highlightJsonValue(result.metadata ?? 'null')"
+                ></code>
+              </section>
+            </div>
 
             <div class="query-result-card__actions">
               <button

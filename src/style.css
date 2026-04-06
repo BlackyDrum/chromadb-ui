@@ -1949,14 +1949,39 @@ pre {
 }
 
 .query-result-card {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 0.8rem;
   height: 100%;
   padding: 1rem;
   border: 1px solid var(--stroke);
   border-radius: 1.1rem;
   background: rgba(6, 24, 34, 0.5);
+}
+
+.query-result-card__body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  min-height: 0;
+}
+
+.query-result-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+}
+
+.query-result-card__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.query-result-card__label {
+  margin: 0;
 }
 
 .query-result-card__top strong {
@@ -1973,8 +1998,20 @@ pre {
   text-transform: uppercase;
 }
 
+.query-result-card__document-shell {
+  flex: 1;
+  min-height: 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.95rem;
+  background: rgba(1, 11, 18, 0.42);
+  overflow: hidden;
+}
+
 .query-result-card__document {
   margin: 0;
+  min-height: 0;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1987,12 +2024,19 @@ pre {
 }
 
 .query-result-card__document-toggle {
-  align-self: flex-start;
-  margin-top: -0.2rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .query-result-card__metadata {
   display: -webkit-box;
+  margin: 0;
+  min-height: calc(1.6em * 5 + 1.7rem);
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.95rem;
+  background: rgba(1, 11, 18, 0.42);
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 5;
@@ -2005,10 +2049,14 @@ pre {
 
 .query-result-card__metadata.hljs.json-highlight {
   display: -webkit-box;
+  width: 100%;
+  padding: 0.85rem 0.95rem !important;
+  background: rgba(1, 11, 18, 0.42) !important;
+  box-sizing: border-box;
 }
 
 .query-result-card__actions {
-  margin-top: auto;
+  margin-top: 0;
   align-items: center;
 }
 
