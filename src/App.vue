@@ -7979,10 +7979,13 @@ const exportCSV = async (includeEmbeddings = false) => {
               </button>
             </div>
 
-            <p class="semantic-provider-card__copy">
-              Semantic queries are converted to embeddings using the selected
-              provider.
-            </p>
+            <div class="import-panel__note">
+              <i class="pi pi-sparkles"></i>
+              <span>
+                Semantic queries are converted to embeddings using the selected
+                provider.
+              </span>
+            </div>
 
             <div v-if="showQueryAutoEmbedSettings" class="import-panel__note">
               <i class="pi pi-info-circle"></i>
