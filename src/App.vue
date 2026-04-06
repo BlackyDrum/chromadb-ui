@@ -7980,9 +7980,17 @@ const exportCSV = async (includeEmbeddings = false) => {
             </div>
 
             <p class="semantic-provider-card__copy">
-              Semantic search works best when the provider model matches the one
-              that created this collection's embeddings.
+              Semantic queries are converted to embeddings using the selected
+              provider.
             </p>
+
+            <div v-if="showQueryAutoEmbedSettings" class="import-panel__note">
+              <i class="pi pi-info-circle"></i>
+              <span>
+                Semantic search works best when the provider model matches the
+                one that created this collection's embeddings.
+              </span>
+            </div>
 
             <div
               v-if="showQueryAutoEmbedSettings"
