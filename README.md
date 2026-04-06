@@ -18,6 +18,12 @@ ChromaDB UI is a web app for exploring and managing a ChromaDB instance through 
   <img src="./docs/showcase/05-preview.png" alt="Vector editor" width="31%" />
 </p>
 
+## Demo Preview
+
+You can try the deployed UI preview here:
+
+- [https://blackydrum.github.io/chromadb-ui/](https://blackydrum.github.io/chromadb-ui/)
+
 ## What You Can Do In The UI
 
 - Connect to a ChromaDB server with a URL, tenant, and database.
@@ -105,7 +111,16 @@ If you encounter CORS errors while running the application, you'll need to ensur
 
 ```yml
 persist_path: "/data"
-cors_allow_origins: ["http://localhost:8090"]
+cors_allow_origins: [
+    "http://localhost:8090", # For local development
+    "https://blackydrum.github.io", # For the deployed GitHub Pages app
+  ]
+```
+
+If you are using the deployed GitHub Pages app and want to use Ollama for record creation or semantic query search, you need to add an environment variable in Ollama:
+
+```sh
+OLLAMA_ORIGINS=https://blackydrum.github.io
 ```
 
 After making these changes, restart the containers or local dev server.
