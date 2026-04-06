@@ -116,10 +116,13 @@ cors_allow_origins: [
   ]
 ```
 
-If you are using the deployed GitHub Pages app and want to use Ollama for record creation or semantic query search, you need to add an environment variable in Ollama:
+After making these changes, restart the containers or local dev server.
+
+If you are using the deployed GitHub Pages app and want to use Ollama for record creation or semantic query search, you need to add an environment variable for Ollama:
 
 ```sh
 OLLAMA_ORIGINS=https://blackydrum.github.io
 ```
 
-After making these changes, restart the containers or local dev server.
+After making these changes, restart Ollama
+
