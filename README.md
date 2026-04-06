@@ -47,10 +47,11 @@ You can try the deployed UI [here](https://blackydrum.github.io/chromadb-ui/):
 
 ## Getting Started
 
-You can use ChromaDB UI in two ways:
+You can use ChromaDB UI in three ways:
 
 - Run it locally with `npm run dev`.
 - Run the app in a Docker container with Docker Compose.
+- Try it out on the [deployed GitHub page](https://blackydrum.github.io/chromadb-ui/).
 
 Follow these steps if you want the local Vite workflow.
 
