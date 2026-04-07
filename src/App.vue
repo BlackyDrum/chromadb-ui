@@ -9314,10 +9314,31 @@ const exportCSV = async (includeEmbeddings = false) => {
               <section class="query-result-card__section">
                 <p class="section-kicker query-result-card__label">Document</p>
 
-                <div class="query-result-card__document-shell">
-                  <p class="query-result-card__document">
-                    {{ result.document || "No document returned." }}
+                <div
+                  class="query-result-card__document-shell"
+                  :class="{
+                    'query-result-card__document-shell--empty':
+                      !result.document,
+                  }"
+                >
+                  <p v-if="result.document" class="query-result-card__document">
+                    {{ result.document }}
                   </p>
+
+                  <div
+                    v-else
+                    class="query-result-card__document query-result-card__document--empty"
+                  >
+                    <span class="query-result-card__document-empty-icon">
+                      <i class="pi pi-file"></i>
+                    </span>
+                    <strong class="query-result-card__document-empty-title">
+                      No document returned
+                    </strong>
+                    <span class="query-result-card__document-empty-copy">
+                      This match came back without stored document text.
+                    </span>
+                  </div>
                 </div>
               </section>
 
