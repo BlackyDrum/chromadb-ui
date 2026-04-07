@@ -32,14 +32,13 @@ You can try the deployed UI [here](https://blackydrum.github.io/chromadb-ui/):
 - Choose an embedding provider for semantic queries, including OpenAI or Ollama.
 - Run embedding-based nearest-neighbor search with raw vector JSON.
 - Search records in the current collection.
-- Build metadata filters with match-all or match-any rules for the current table view.
+- Build metadata filters for the current table view.
 - Select multiple rows and run bulk actions like delete, metadata patch, and selected-row CSV export.
 - Add records with IDs, optional documents and metadata, then either paste embeddings manually or auto-generate them from document text.
 - Import or upsert JSON records with explicit embeddings or auto-generate missing embeddings from document text.
 - Collection metrics viewer with document, metadata, sampled embedding stats, and quality audit findings.
 - Review a recent activity log inside the current workspace.
-- Edit documents inline.
-- Edit metadata inline with JSON validation.
+- Edit documents and metadata.
 - Expand a table row to preview that record's embedding.
 - Open a full vector viewer for large embeddings.
 - Edit embeddings directly and save them back to Chroma.
@@ -125,4 +124,3 @@ OLLAMA_ORIGINS=https://blackydrum.github.io
 ```
 
 After making these changes, restart Ollama.
-
