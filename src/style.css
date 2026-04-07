@@ -2367,6 +2367,14 @@ pre {
   gap: 0.65rem;
 }
 
+.cell-document-wrap {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
 .cell-document,
 .cell-json {
   display: block;
@@ -2381,6 +2389,48 @@ pre {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 5;
+}
+
+.cell-document--empty {
+  display: grid;
+  width: 100%;
+  gap: 0.45rem;
+  overflow: visible;
+  padding: 0.9rem 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 1rem;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.035),
+    rgba(255, 255, 255, 0.015)
+  );
+  -webkit-box-orient: initial;
+  -webkit-line-clamp: unset;
+}
+
+.cell-document__empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--amber);
+}
+
+.cell-document__empty-title {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.cell-document__empty-copy {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.cell-document__action {
+  align-self: flex-start;
 }
 
 .cell-json {
@@ -3057,6 +3107,10 @@ pre {
   width: min(60rem, calc(100vw - 2rem));
 }
 
+.p-dialog.document-editor-dialog {
+  width: min(68rem, calc(100vw - 2rem));
+}
+
 .collection-dialog .p-dialog-header,
 .collection-dialog .p-dialog-content,
 .collection-dialog .p-dialog-footer,
@@ -3131,6 +3185,39 @@ pre {
 
 .record-dialog__field--wide {
   grid-column: 1 / -1;
+}
+
+.document-editor-dialog__body {
+  gap: 1.1rem;
+}
+
+.document-editor-dialog__summary strong {
+  font-size: 1rem;
+}
+
+.document-editor-dialog__summary p {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.document-editor-dialog__textarea {
+  min-height: min(28rem, calc(100vh - 18rem));
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 1rem;
+  background: rgba(4, 17, 26, 0.94);
+  padding: 1rem 1.05rem;
+  color: var(--text-main);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.72;
+  resize: vertical;
+}
+
+.document-editor-dialog__textarea:focus {
+  outline: none;
+  border-color: var(--stroke-strong);
+  box-shadow: 0 0 0 0.16rem rgba(83, 229, 191, 0.12);
 }
 
 .metadata-editor-dialog__body {
@@ -4308,6 +4395,10 @@ pre {
 
   .record-dialog__grid {
     grid-template-columns: 1fr;
+  }
+
+  .document-editor-dialog__textarea {
+    min-height: 18rem;
   }
 
   .metadata-editor-dialog__toolbar {

@@ -61,6 +61,7 @@ const editingEmbeddingIds = ref({});
 const embeddingDialog = ref({ visible: false, id: null });
 const embeddingDialogOffset = ref(0);
 const expandedEmbeddingRows = ref({});
+const documentEditorDialog = ref({ visible: false, id: null, draft: "" });
 const metadataEditorDialog = ref({
   visible: false,
   id: null,
@@ -90,6 +91,7 @@ const isCreatingRecord = ref(false);
 const isCheckingWorkspaceHealth = ref(false);
 const isDeletingRows = ref(false);
 const isApplyingBulkMetadata = ref(false);
+const isSavingDocumentEditor = ref(false);
 const isSavingMetadataEditor = ref(false);
 
 const showCreateCollectionForm = ref(false);
@@ -1008,6 +1010,8 @@ const resetEmbeddingViews = () => {
   embeddingDialog.value = { visible: false, id: null };
   embeddingDialogOffset.value = 0;
   expandedEmbeddingRows.value = {};
+  documentEditorDialog.value = { visible: false, id: null, draft: "" };
+  isSavingDocumentEditor.value = false;
   metadataEditorDialog.value = {
     visible: false,
     id: null,
@@ -5035,6 +5039,129 @@ const handleEditCollection = async () => {
   }
 };
 
+const openDocumentEditor = (id) => {
+  const row = currentCollectionData.value.find((item) => item.id === id);
+
+  if (!row) return;
+
+  isSavingDocumentEditor.value = false;
+  documentEditorDialog.value = {
+    visible: true,
+    id,
+    draft: `${row.document ?? ""}`,
+  };
+};
+
+const closeDocumentEditor = () => {
+  isSavingDocumentEditor.value = false;
+  documentEditorDialog.value = { visible: false, id: null, draft: "" };
+};
+
+const saveDocumentEditor = async () => {
+  if (
+    !currentCollection.value ||
+    !documentEditorDialog.value.id ||
+    isSavingDocumentEditor.value
+  ) {
+    return;
+  }
+
+  const row = currentCollectionData.value.find(
+    (item) => item.id === documentEditorDialog.value.id,
+  );
+
+  if (!row) {
+    closeDocumentEditor();
+    return;
+  }
+
+  const previousDocument = `${row.document ?? ""}`;
+  const nextDocument = `${documentEditorDialog.value.draft ?? ""}`;
+
+  if (previousDocument === nextDocument) {
+    closeDocumentEditor();
+    return;
+  }
+
+  isSavingDocumentEditor.value = true;
+
+  try {
+    await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+      {
+        documents: [nextDocument],
+        ids: [row.id],
+        metadatas: [parseMetadataValue(row.metadata)],
+      },
+    );
+
+    const selectedRowIds = new Set(
+      selectedTableRows.value.map((item) => item.id),
+    );
+
+    currentCollectionData.value = currentCollectionData.value.map((item) =>
+      item.id === row.id
+        ? {
+            ...item,
+            document: nextDocument,
+          }
+        : item,
+    );
+    selectedTableRows.value = currentCollectionData.value.filter((item) =>
+      selectedRowIds.has(item.id),
+    );
+
+    toast.add({
+      severity: "success",
+      summary: nextDocument.trim().length
+        ? "Document updated"
+        : "Document cleared",
+      detail: nextDocument.trim().length
+        ? `Saved document text for ${row.id}.`
+        : `Removed document text from ${row.id}.`,
+      life: 4000,
+    });
+
+    appendActivityLogEntry({
+      type: "edit",
+      title: `Edited document for ${row.id}`,
+      description: `Updated the document text for ${row.id} in ${currentCollection.value.name}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: 1,
+      rowIds: [row.id],
+      details: [
+        buildActivityRecordDetailSection({
+          title: row.id,
+          beforeRecord: buildActivityRecordSnapshot({
+            id: row.id,
+            document: previousDocument,
+          }),
+          afterRecord: buildActivityRecordSnapshot({
+            id: row.id,
+            document: nextDocument,
+          }),
+          fields: ["document"],
+        }),
+      ],
+      meta: {
+        field: "document",
+      },
+    });
+
+    closeDocumentEditor();
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Document update failed",
+      detail: getErrorMessage(error),
+      life: 5000,
+    });
+  } finally {
+    isSavingDocumentEditor.value = false;
+  }
+};
+
 const openMetadataEditor = (id) => {
   const row = currentCollectionData.value.find((item) => item.id === id);
 
@@ -5278,70 +5405,6 @@ const saveMetadataEditor = async () => {
   }
 };
 
-const onEmbeddingCellEditComplete = async (event) => {
-  if (event.field !== "document") return;
-
-  const embedding = currentCollectionData.value.find(
-    (item) => item.id === event.data.id,
-  );
-  if (!embedding) return;
-
-  const oldDocument = embedding.document;
-
-  if (oldDocument === event.newValue) return;
-
-  embedding.document = event.newValue;
-
-  const parsedMetadataForUpdate = parseMetadataValue(embedding.metadata);
-
-  try {
-    await axios.post(
-      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
-      {
-        documents: [embedding.document],
-        ids: [embedding.id],
-        metadatas: [parsedMetadataForUpdate],
-      },
-    );
-
-    appendActivityLogEntry({
-      type: "edit",
-      title: `Edited document for ${embedding.id}`,
-      description: `Updated the document text for ${embedding.id} in ${currentCollection.value.name}.`,
-      collectionId: currentCollection.value.id,
-      collectionName: currentCollection.value.name,
-      rowCount: 1,
-      rowIds: [embedding.id],
-      details: [
-        buildActivityRecordDetailSection({
-          title: embedding.id,
-          beforeRecord: buildActivityRecordSnapshot({
-            id: embedding.id,
-            document: oldDocument,
-          }),
-          afterRecord: buildActivityRecordSnapshot({
-            id: embedding.id,
-            document: embedding.document,
-          }),
-          fields: ["document"],
-        }),
-      ],
-      meta: {
-        field: "document",
-      },
-    });
-  } catch (error) {
-    embedding.document = oldDocument;
-
-    toast.add({
-      severity: "error",
-      summary: "Error",
-      detail: `Unable to edit document. Reason: ${getErrorMessage(error)}`,
-      life: 5000,
-    });
-  }
-};
-
 const removeRowsFromLocalState = (ids) => {
   const idSet = new Set(ids);
 
@@ -5367,6 +5430,10 @@ const removeRowsFromLocalState = (ids) => {
 
     if (embeddingDialog.value.id === id) {
       closeEmbeddingDialog();
+    }
+
+    if (documentEditorDialog.value.id === id) {
+      closeDocumentEditor();
     }
 
     if (metadataEditorDialog.value.id === id) {
@@ -6692,7 +6759,6 @@ const exportCSV = async (includeEmbeddings = false) => {
             ref="embeddingDataTable"
             class="embedding-table"
             showGridlines
-            editMode="cell"
             paginator
             scrollable
             tableStyle="min-width: 58rem"
@@ -6708,7 +6774,6 @@ const exportCSV = async (includeEmbeddings = false) => {
             v-model:filters="filters"
             v-model:expandedRows="expandedEmbeddingRows"
             :value="filteredCollectionData"
-            @cell-edit-complete="onEmbeddingCellEditComplete"
             @row-expand="handleEmbeddingRowExpand"
           >
             <template #header>
@@ -6942,16 +7007,27 @@ const exportCSV = async (includeEmbeddings = false) => {
               headerStyle="width: 22rem"
             >
               <template #body="slotProps">
-                <div class="cell-document">{{ slotProps.data.document }}</div>
-              </template>
+                <div class="cell-document-wrap">
+                  <div v-if="slotProps.data.document" class="cell-document">
+                    {{ slotProps.data.document }}
+                  </div>
 
-              <template #editor="{ data, field }">
-                <textarea
-                  v-model="data[field]"
-                  class="table-editor"
-                  rows="4"
-                  autofocus
-                ></textarea>
+                  <div v-else class="cell-document cell-document--empty">
+                    <strong class="cell-document__empty-title">
+                      No document stored
+                    </strong>
+                  </div>
+
+                  <button
+                    class="mini-button mini-button--ghost mini-button--inline cell-document__action"
+                    type="button"
+                    @click="openDocumentEditor(slotProps.data.id)"
+                  >
+                    {{
+                      slotProps.data.document ? "Edit document" : "Add document"
+                    }}
+                  </button>
+                </div>
               </template>
             </Column>
 
@@ -7527,6 +7603,72 @@ const exportCSV = async (includeEmbeddings = false) => {
             "
           ></i>
           <span>Apply to selected rows</span>
+        </button>
+      </div>
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="documentEditorDialog.visible"
+    modal
+    :draggable="false"
+    class="record-dialog document-editor-dialog"
+    @hide="closeDocumentEditor"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Row document</p>
+        <h2>{{ documentEditorDialog.id ?? "No row selected" }}</h2>
+      </div>
+    </template>
+
+    <div class="dialog-body document-editor-dialog__body">
+      <div class="record-dialog__meta document-editor-dialog__summary">
+        <strong>Edit the full document.</strong>
+        <p>
+          Use this editor for long text, multiline content, or emptying the
+          document entirely. Saving a blank value clears the stored document.
+        </p>
+      </div>
+
+      <label class="field document-editor-dialog__field">
+        <span class="field__label">Document text</span>
+        <span class="field__hint">
+          You can paste plain text, multiline content, or leave it empty.
+        </span>
+        <textarea
+          v-model="documentEditorDialog.draft"
+          class="document-editor-dialog__textarea scroll-container"
+          rows="16"
+          spellcheck="true"
+          placeholder="Paste or write the full document text"
+        ></textarea>
+      </label>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          :disabled="isSavingDocumentEditor"
+          @click="closeDocumentEditor"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="ui-button ui-button--primary"
+          type="button"
+          :disabled="isSavingDocumentEditor"
+          @click="saveDocumentEditor"
+        >
+          <i
+            :class="
+              isSavingDocumentEditor ? 'pi pi-spin pi-spinner' : 'pi pi-check'
+            "
+          ></i>
+          <span>Save document</span>
         </button>
       </div>
     </template>
