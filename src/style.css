@@ -3763,9 +3763,9 @@ pre {
 }
 
 .metadata-filter-key-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 0.8rem;
   min-height: 2.6rem;
   padding: 0.65rem 0.8rem;
@@ -3779,6 +3779,15 @@ pre {
     background-color 160ms ease;
 }
 
+.metadata-filter-key-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .metadata-filter-key-option:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 190, 114, 0.24);
@@ -3786,10 +3795,12 @@ pre {
 }
 
 .metadata-filter-key-option small {
+  align-self: start;
   color: var(--text-muted);
   font-size: 0.74rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .metadata-filter-select {

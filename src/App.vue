@@ -8050,7 +8050,6 @@ const exportCSV = async (includeEmbeddings = false) => {
                               "
                             >
                               <span>{{ suggestion }}</span>
-                              <small>Detected key</small>
                             </button>
                           </div>
                         </div>
