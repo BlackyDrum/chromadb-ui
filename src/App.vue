@@ -61,6 +61,13 @@ const editingEmbeddingIds = ref({});
 const embeddingDialog = ref({ visible: false, id: null });
 const embeddingDialogOffset = ref(0);
 const expandedEmbeddingRows = ref({});
+const metadataEditorDialog = ref({
+  visible: false,
+  id: null,
+  entries: [],
+  mode: "fields",
+  rawValue: "null",
+});
 
 const collectionOverlayPanel = ref();
 const exportOverlayPanel = ref();
@@ -83,6 +90,7 @@ const isCreatingRecord = ref(false);
 const isCheckingWorkspaceHealth = ref(false);
 const isDeletingRows = ref(false);
 const isApplyingBulkMetadata = ref(false);
+const isSavingMetadataEditor = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
@@ -199,6 +207,11 @@ const QUERY_FILTER_VALUE_TYPES = [
   { label: "Number", value: "number" },
   { label: "True / false", value: "boolean" },
 ];
+const METADATA_EDITOR_VALUE_TYPES = [
+  { label: "Text", value: "text" },
+  { label: "Number", value: "number" },
+  { label: "True / false", value: "boolean" },
+];
 const QUERY_WHERE_DOCUMENT_OPERATORS = [
   { label: "Contains text", value: "contains" },
   { label: "Does not contain", value: "not_contains" },
@@ -227,6 +240,7 @@ const IMPORT_EXAMPLE_PAYLOAD = `[
 ]`;
 
 let metadataFilterRuleSequence = 0;
+let metadataEditorEntrySequence = 0;
 let workspaceHealthCheckTimer = null;
 let activityLogSequence = 0;
 const highlightedJsonCache = new Map();
@@ -333,6 +347,143 @@ const parseMetadataValue = (value) => {
 
 const isPlainMetadataObject = (value) => {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+};
+
+const normalizeMetadataEditorValueType = (valueType) => {
+  return METADATA_EDITOR_VALUE_TYPES.some((entry) => entry.value === valueType)
+    ? valueType
+    : "text";
+};
+
+const getMetadataEditorValueType = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "text";
+};
+
+const normalizeMetadataEditorValue = (value, valueType = "text") => {
+  if (normalizeMetadataEditorValueType(valueType) === "boolean") {
+    return `${value}` === "false" ? "false" : "true";
+  }
+
+  return value === null || value === undefined ? "" : `${value}`;
+};
+
+const createMetadataEditorEntry = (overrides = {}) => {
+  const valueType = normalizeMetadataEditorValueType(
+    overrides?.valueType ?? getMetadataEditorValueType(overrides?.value),
+  );
+
+  return {
+    id:
+      overrides?.id ?? `metadata-editor-${(metadataEditorEntrySequence += 1)}`,
+    key: `${overrides?.key ?? ""}`,
+    valueType,
+    value: normalizeMetadataEditorValue(overrides?.value, valueType),
+  };
+};
+
+const buildMetadataEditorEntries = (metadataValue) => {
+  if (!isPlainMetadataObject(metadataValue)) {
+    return [];
+  }
+
+  return Object.entries(metadataValue).map(([key, value]) =>
+    createMetadataEditorEntry({ key, value }),
+  );
+};
+
+const buildMetadataFromEditorEntries = (entries) => {
+  if (!Array.isArray(entries) || !entries.length) {
+    return null;
+  }
+
+  const metadata = {};
+  const seenKeys = new Set();
+
+  for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+    const entry = entries[entryIndex];
+    const key = `${entry?.key ?? ""}`.trim();
+
+    if (!key) {
+      throw new Error(`Metadata key ${entryIndex + 1} cannot be empty.`);
+    }
+
+    if (seenKeys.has(key)) {
+      throw new Error(`Duplicate metadata key '${key}'.`);
+    }
+
+    const valueType = normalizeMetadataEditorValueType(entry?.valueType);
+    let value;
+
+    if (valueType === "number") {
+      const normalizedValue = `${entry?.value ?? ""}`.trim();
+
+      if (!normalizedValue.length) {
+        throw new Error(`Metadata value for '${key}' must be a number.`);
+      }
+
+      value = Number(normalizedValue);
+
+      if (!Number.isFinite(value)) {
+        throw new Error(`Metadata value for '${key}' must be a finite number.`);
+      }
+    } else if (valueType === "boolean") {
+      value = `${entry?.value}` === "false" ? false : true;
+    } else {
+      value = `${entry?.value ?? ""}`;
+    }
+
+    metadata[key] = value;
+    seenKeys.add(key);
+  }
+
+  return metadata;
+};
+
+const handleMetadataEditorValueTypeChange = (entry) => {
+  if (!entry) return;
+
+  entry.valueType = normalizeMetadataEditorValueType(entry.valueType);
+
+  if (entry.valueType === "boolean") {
+    entry.value = normalizeMetadataEditorValue(entry.value, "boolean");
+  }
+};
+
+const canMetadataEditorUseFieldMode = (metadataValue) => {
+  if (metadataValue === null) return true;
+  if (!isPlainMetadataObject(metadataValue)) return false;
+
+  return Object.values(metadataValue).every((value) => {
+    return (
+      (typeof value === "string" && value !== undefined) ||
+      (typeof value === "number" && Number.isFinite(value)) ||
+      typeof value === "boolean"
+    );
+  });
+};
+
+const parseMetadataEditorRawValue = (value) => {
+  const trimmedValue = `${value ?? ""}`.trim();
+
+  if (!trimmedValue) {
+    throw new Error("Enter a JSON object or null.");
+  }
+
+  let parsedValue;
+
+  try {
+    parsedValue = JSON.parse(trimmedValue);
+  } catch (_) {
+    throw new Error("Metadata JSON must be valid JSON.");
+  }
+
+  if (parsedValue !== null && !isPlainMetadataObject(parsedValue)) {
+    throw new Error("Metadata JSON must be a JSON object or null.");
+  }
+
+  return parsedValue;
 };
 
 const createMetadataFilterRule = (overrides = {}) => ({
@@ -857,6 +1008,14 @@ const resetEmbeddingViews = () => {
   embeddingDialog.value = { visible: false, id: null };
   embeddingDialogOffset.value = 0;
   expandedEmbeddingRows.value = {};
+  metadataEditorDialog.value = {
+    visible: false,
+    id: null,
+    entries: [],
+    mode: "fields",
+    rawValue: "null",
+  };
+  isSavingMetadataEditor.value = false;
 };
 
 const getEmbeddingPreview = (id) => {
@@ -4876,69 +5035,279 @@ const handleEditCollection = async () => {
   }
 };
 
+const openMetadataEditor = (id) => {
+  const row = currentCollectionData.value.find((item) => item.id === id);
+
+  if (!row) return;
+
+  const metadataValue = parseMetadataValue(row.metadata);
+
+  isSavingMetadataEditor.value = false;
+  metadataEditorDialog.value = {
+    visible: true,
+    id,
+    entries: canMetadataEditorUseFieldMode(metadataValue)
+      ? buildMetadataEditorEntries(metadataValue)
+      : [],
+    mode: canMetadataEditorUseFieldMode(metadataValue) ? "fields" : "raw",
+    rawValue: safeStringify(metadataValue, true),
+  };
+};
+
+const closeMetadataEditor = () => {
+  isSavingMetadataEditor.value = false;
+  metadataEditorDialog.value = {
+    visible: false,
+    id: null,
+    entries: [],
+    mode: "fields",
+    rawValue: "null",
+  };
+};
+
+const addMetadataEditorEntry = () => {
+  metadataEditorDialog.value = {
+    ...metadataEditorDialog.value,
+    entries: [
+      ...metadataEditorDialog.value.entries,
+      createMetadataEditorEntry(),
+    ],
+  };
+};
+
+const removeMetadataEditorEntry = (entryId) => {
+  metadataEditorDialog.value = {
+    ...metadataEditorDialog.value,
+    entries: metadataEditorDialog.value.entries.filter(
+      (entry) => entry.id !== entryId,
+    ),
+  };
+};
+
+const clearMetadataEditorEntries = () => {
+  metadataEditorDialog.value = {
+    ...metadataEditorDialog.value,
+    entries: [],
+    rawValue: "null",
+  };
+};
+
+const setMetadataEditorMode = (nextMode) => {
+  const normalizedMode = nextMode === "raw" ? "raw" : "fields";
+
+  if (metadataEditorDialog.value.mode === normalizedMode) {
+    return;
+  }
+
+  if (normalizedMode === "raw") {
+    let nextMetadata;
+
+    try {
+      nextMetadata = buildMetadataFromEditorEntries(
+        metadataEditorDialog.value.entries,
+      );
+    } catch (error) {
+      toast.add({
+        severity: "error",
+        summary: "Invalid metadata",
+        detail: error.message,
+        life: 5000,
+      });
+      return;
+    }
+
+    metadataEditorDialog.value = {
+      ...metadataEditorDialog.value,
+      mode: "raw",
+      rawValue: safeStringify(nextMetadata, true),
+    };
+    return;
+  }
+
+  let parsedMetadata;
+
+  try {
+    parsedMetadata = parseMetadataEditorRawValue(
+      metadataEditorDialog.value.rawValue,
+    );
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid metadata",
+      detail: error.message,
+      life: 5000,
+    });
+    return;
+  }
+
+  if (!canMetadataEditorUseFieldMode(parsedMetadata)) {
+    toast.add({
+      severity: "error",
+      summary: "Cannot switch to fields",
+      detail:
+        "Fields mode supports flat text, number, and true/false values only.",
+      life: 5000,
+    });
+    return;
+  }
+
+  metadataEditorDialog.value = {
+    ...metadataEditorDialog.value,
+    mode: "fields",
+    entries: buildMetadataEditorEntries(parsedMetadata),
+    rawValue: safeStringify(parsedMetadata, true),
+  };
+};
+
+const saveMetadataEditor = async () => {
+  if (
+    !currentCollection.value ||
+    !metadataEditorDialog.value.id ||
+    isSavingMetadataEditor.value
+  ) {
+    return;
+  }
+
+  const row = currentCollectionData.value.find(
+    (item) => item.id === metadataEditorDialog.value.id,
+  );
+
+  if (!row) {
+    closeMetadataEditor();
+    return;
+  }
+
+  let nextMetadata;
+
+  try {
+    nextMetadata =
+      metadataEditorDialog.value.mode === "raw"
+        ? parseMetadataEditorRawValue(metadataEditorDialog.value.rawValue)
+        : buildMetadataFromEditorEntries(metadataEditorDialog.value.entries);
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid metadata",
+      detail: error.message,
+      life: 5000,
+    });
+    return;
+  }
+
+  const previousMetadata = parseMetadataValue(row.metadata);
+
+  if (areMetadataValuesEqual(previousMetadata, nextMetadata)) {
+    closeMetadataEditor();
+    return;
+  }
+
+  isSavingMetadataEditor.value = true;
+
+  try {
+    await applyExactMetadataOnServer([
+      {
+        id: row.id,
+        metadata: nextMetadata,
+      },
+    ]);
+
+    const nextMetadataLabel = safeStringify(nextMetadata);
+    const selectedRowIds = new Set(
+      selectedTableRows.value.map((item) => item.id),
+    );
+
+    currentCollectionData.value = currentCollectionData.value.map((item) =>
+      item.id === row.id
+        ? {
+            ...item,
+            metadata: nextMetadataLabel,
+          }
+        : item,
+    );
+    selectedTableRows.value = currentCollectionData.value.filter((item) =>
+      selectedRowIds.has(item.id),
+    );
+
+    toast.add({
+      severity: "success",
+      summary: nextMetadata === null ? "Metadata cleared" : "Metadata updated",
+      detail:
+        nextMetadata === null
+          ? `Removed metadata from ${row.id}.`
+          : `Saved metadata for ${row.id}.`,
+      life: 4000,
+    });
+
+    appendActivityLogEntry({
+      type: "edit",
+      title: `Edited metadata for ${row.id}`,
+      description: `Updated the metadata for ${row.id} in ${currentCollection.value.name}.`,
+      collectionId: currentCollection.value.id,
+      collectionName: currentCollection.value.name,
+      rowCount: 1,
+      rowIds: [row.id],
+      details: [
+        buildActivityRecordDetailSection({
+          title: row.id,
+          beforeRecord: buildActivityRecordSnapshot({
+            id: row.id,
+            metadata: previousMetadata,
+          }),
+          afterRecord: buildActivityRecordSnapshot({
+            id: row.id,
+            metadata: nextMetadata,
+          }),
+          fields: ["metadata"],
+        }),
+      ],
+      meta: {
+        field: "metadata",
+      },
+    });
+
+    closeMetadataEditor();
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Metadata update failed",
+      detail: getErrorMessage(error),
+      life: 5000,
+    });
+  } finally {
+    isSavingMetadataEditor.value = false;
+  }
+};
+
 const onEmbeddingCellEditComplete = async (event) => {
+  if (event.field !== "document") return;
+
   const embedding = currentCollectionData.value.find(
     (item) => item.id === event.data.id,
   );
   if (!embedding) return;
 
   const oldDocument = embedding.document;
-  const oldMetadata = embedding.metadata;
 
-  if (event.field === "document" && oldDocument === event.newValue) return;
-  if (event.field === "metadata" && oldMetadata === event.newValue) return;
+  if (oldDocument === event.newValue) return;
 
-  if (event.field === "document") {
-    embedding.document = event.newValue;
-  } else if (event.field === "metadata") {
-    try {
-      JSON.parse(event.newValue);
-    } catch (_) {
-      toast.add({
-        severity: "error",
-        summary: "Error",
-        detail: "Metadata must be valid JSON",
-        life: 5000,
-      });
-      return;
-    }
-
-    embedding.metadata = event.newValue;
-  }
+  embedding.document = event.newValue;
 
   const parsedMetadataForUpdate = parseMetadataValue(embedding.metadata);
-  const parsedNewMetadata =
-    event.field === "metadata" ? JSON.parse(embedding.metadata) : undefined;
 
   try {
-    if (event.field === "metadata") {
-      await applyExactMetadataOnServer([
-        {
-          id: embedding.id,
-          metadata: parsedMetadataForUpdate,
-        },
-      ]);
-    } else {
-      await axios.post(
-        `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
-        {
-          documents: [embedding.document],
-          ids: [embedding.id],
-          metadatas: [parsedMetadataForUpdate],
-        },
-      );
-    }
+    await axios.post(
+      `${collectionBaseUrl.value}/${currentCollection.value.id}/update`,
+      {
+        documents: [embedding.document],
+        ids: [embedding.id],
+        metadatas: [parsedMetadataForUpdate],
+      },
+    );
 
     appendActivityLogEntry({
       type: "edit",
-      title:
-        event.field === "document"
-          ? `Edited document for ${embedding.id}`
-          : `Edited metadata for ${embedding.id}`,
-      description:
-        event.field === "document"
-          ? `Updated the document text for ${embedding.id} in ${currentCollection.value.name}.`
-          : `Updated the metadata for ${embedding.id} in ${currentCollection.value.name}.`,
+      title: `Edited document for ${embedding.id}`,
+      description: `Updated the document text for ${embedding.id} in ${currentCollection.value.name}.`,
       collectionId: currentCollection.value.id,
       collectionName: currentCollection.value.name,
       rowCount: 1,
@@ -4949,28 +5318,25 @@ const onEmbeddingCellEditComplete = async (event) => {
           beforeRecord: buildActivityRecordSnapshot({
             id: embedding.id,
             document: oldDocument,
-            metadata: oldMetadata,
           }),
           afterRecord: buildActivityRecordSnapshot({
             id: embedding.id,
             document: embedding.document,
-            metadata: parsedNewMetadata,
           }),
-          fields: [event.field],
+          fields: ["document"],
         }),
       ],
       meta: {
-        field: event.field,
+        field: "document",
       },
     });
   } catch (error) {
     embedding.document = oldDocument;
-    embedding.metadata = oldMetadata;
 
     toast.add({
       severity: "error",
       summary: "Error",
-      detail: `Unable to edit embedding. Reason: ${getErrorMessage(error)}`,
+      detail: `Unable to edit document. Reason: ${getErrorMessage(error)}`,
       life: 5000,
     });
   }
@@ -5001,6 +5367,10 @@ const removeRowsFromLocalState = (ids) => {
 
     if (embeddingDialog.value.id === id) {
       closeEmbeddingDialog();
+    }
+
+    if (metadataEditorDialog.value.id === id) {
+      closeMetadataEditor();
     }
   }
 
@@ -6592,19 +6962,22 @@ const exportCSV = async (includeEmbeddings = false) => {
               headerStyle="width: 20rem"
             >
               <template #body="slotProps">
-                <code
-                  class="cell-json hljs json-highlight"
-                  v-html="highlightJsonValue(slotProps.data.metadata ?? 'null')"
-                ></code>
-              </template>
+                <div class="cell-json-wrap">
+                  <code
+                    class="cell-json hljs json-highlight"
+                    v-html="
+                      highlightJsonValue(slotProps.data.metadata ?? 'null')
+                    "
+                  ></code>
 
-              <template #editor="{ data, field }">
-                <textarea
-                  v-model="data[field]"
-                  class="table-editor table-editor--json"
-                  rows="4"
-                  autofocus
-                ></textarea>
+                  <button
+                    class="mini-button mini-button--ghost mini-button--inline cell-json__action"
+                    type="button"
+                    @click="openMetadataEditor(slotProps.data.id)"
+                  >
+                    Edit metadata
+                  </button>
+                </div>
               </template>
             </Column>
 
@@ -7154,6 +7527,194 @@ const exportCSV = async (includeEmbeddings = false) => {
             "
           ></i>
           <span>Apply to selected rows</span>
+        </button>
+      </div>
+    </template>
+  </Dialog>
+
+  <Dialog
+    v-model:visible="metadataEditorDialog.visible"
+    modal
+    :draggable="false"
+    class="record-dialog metadata-editor-dialog"
+    @hide="closeMetadataEditor"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Row metadata</p>
+        <h2>{{ metadataEditorDialog.id ?? "No row selected" }}</h2>
+      </div>
+    </template>
+
+    <div class="dialog-body metadata-editor-dialog__body">
+      <div class="record-dialog__meta metadata-editor-dialog__summary">
+        <strong>Edit metadata with fields or raw JSON.</strong>
+        <p>
+          Use the fields mode for quick edits, or switch to raw JSON when you
+          want full control. Remove every key if you want this row to save as
+          <code>null</code>.
+        </p>
+      </div>
+
+      <div class="query-mode-switch metadata-editor-dialog__mode-switch">
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active':
+              metadataEditorDialog.mode === 'fields',
+          }"
+          type="button"
+          :disabled="isSavingMetadataEditor"
+          @click="setMetadataEditorMode('fields')"
+        >
+          Fields
+        </button>
+
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active':
+              metadataEditorDialog.mode === 'raw',
+          }"
+          type="button"
+          :disabled="isSavingMetadataEditor"
+          @click="setMetadataEditorMode('raw')"
+        >
+          Raw JSON
+        </button>
+      </div>
+
+      <template v-if="metadataEditorDialog.mode === 'fields'">
+        <div class="metadata-editor-dialog__toolbar">
+          <button
+            class="mini-button"
+            type="button"
+            :disabled="isSavingMetadataEditor"
+            @click="addMetadataEditorEntry"
+          >
+            <i class="pi pi-plus"></i>
+            <span>Add key</span>
+          </button>
+
+          <button
+            class="mini-button mini-button--ghost"
+            type="button"
+            :disabled="
+              !metadataEditorDialog.entries.length || isSavingMetadataEditor
+            "
+            @click="clearMetadataEditorEntries"
+          >
+            Clear all
+          </button>
+        </div>
+
+        <div
+          v-if="metadataEditorDialog.entries.length"
+          class="metadata-editor-list scroll-container"
+        >
+          <article
+            v-for="entry in metadataEditorDialog.entries"
+            :key="entry.id"
+            class="metadata-editor-row"
+          >
+            <label class="field field--compact metadata-editor-row__field">
+              <span class="field__label">Key</span>
+              <input v-model="entry.key" type="text" placeholder="Enter Key" />
+            </label>
+
+            <label class="field field--compact metadata-editor-row__field">
+              <span class="field__label">Type</span>
+              <select
+                v-model="entry.valueType"
+                @change="handleMetadataEditorValueTypeChange(entry)"
+              >
+                <option
+                  v-for="valueType in METADATA_EDITOR_VALUE_TYPES"
+                  :key="valueType.value"
+                  :value="valueType.value"
+                >
+                  {{ valueType.label }}
+                </option>
+              </select>
+            </label>
+
+            <label class="field field--compact metadata-editor-row__field">
+              <span class="field__label">Value</span>
+              <select
+                v-if="entry.valueType === 'boolean'"
+                v-model="entry.value"
+              >
+                <option value="true">True</option>
+                <option value="false">False</option>
+              </select>
+
+              <input
+                v-else
+                v-model="entry.value"
+                type="text"
+                :inputmode="entry.valueType === 'number' ? 'decimal' : 'text'"
+                placeholder="Enter Value"
+              />
+            </label>
+
+            <button
+              class="mini-button mini-button--ghost mini-button--icon metadata-editor-row__remove"
+              type="button"
+              aria-label="Remove metadata entry"
+              :disabled="isSavingMetadataEditor"
+              @click="removeMetadataEditorEntry(entry.id)"
+            >
+              <i class="pi pi-trash"></i>
+            </button>
+          </article>
+        </div>
+
+        <div v-else class="metadata-editor-dialog__empty">
+          No metadata keys yet. Save now to store <code>null</code>, or add a
+          key to build a metadata object.
+        </div>
+      </template>
+
+      <label v-else class="field metadata-editor-dialog__raw-field">
+        <span class="field__label">Metadata JSON</span>
+        <span class="field__hint">
+          Paste a JSON object or <code>null</code>. Switch back to
+          <code>Fields</code> only when the metadata is flat text, number, or
+          true/false values.
+        </span>
+        <textarea
+          v-model="metadataEditorDialog.rawValue"
+          class="metadata-editor-dialog__textarea scroll-container"
+          rows="14"
+          spellcheck="false"
+          placeholder='{"topic":"auth","priority":2}'
+        ></textarea>
+      </label>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          :disabled="isSavingMetadataEditor"
+          @click="closeMetadataEditor"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="ui-button ui-button--primary"
+          type="button"
+          :disabled="isSavingMetadataEditor"
+          @click="saveMetadataEditor"
+        >
+          <i
+            :class="
+              isSavingMetadataEditor ? 'pi pi-spin pi-spinner' : 'pi pi-check'
+            "
+          ></i>
+          <span>Save metadata</span>
         </button>
       </div>
     </template>

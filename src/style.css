@@ -2360,6 +2360,13 @@ pre {
   gap: 0.55rem;
 }
 
+.cell-json-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
 .cell-document,
 .cell-json {
   display: block;
@@ -2388,6 +2395,10 @@ pre {
 
 .cell-json.hljs.json-highlight {
   display: -webkit-box;
+}
+
+.cell-json__action {
+  flex-shrink: 0;
 }
 
 .embedding-preview {
@@ -3024,7 +3035,8 @@ pre {
 }
 
 .p-dialog.collection-dialog,
-.p-dialog.record-dialog {
+.p-dialog.record-dialog,
+.p-dialog.metadata-editor-dialog {
   width: min(44rem, calc(100vw - 2rem));
   border: 1px solid var(--stroke);
   border-radius: 1.6rem;
@@ -3041,9 +3053,16 @@ pre {
   width: min(56rem, calc(100vw - 2rem));
 }
 
+.p-dialog.metadata-editor-dialog {
+  width: min(60rem, calc(100vw - 2rem));
+}
+
 .collection-dialog .p-dialog-header,
 .collection-dialog .p-dialog-content,
 .collection-dialog .p-dialog-footer,
+.metadata-editor-dialog .p-dialog-header,
+.metadata-editor-dialog .p-dialog-content,
+.metadata-editor-dialog .p-dialog-footer,
 .record-dialog .p-dialog-header,
 .record-dialog .p-dialog-content,
 .record-dialog .p-dialog-footer {
@@ -3052,27 +3071,32 @@ pre {
 }
 
 .collection-dialog .p-dialog-header,
+.metadata-editor-dialog .p-dialog-header,
 .record-dialog .p-dialog-header {
   padding: 1.15rem 1.15rem 0.4rem;
 }
 
 .collection-dialog .p-dialog-content,
+.metadata-editor-dialog .p-dialog-content,
 .record-dialog .p-dialog-content {
   padding: 0.7rem 1.15rem 1rem;
 }
 
 .collection-dialog .p-dialog-footer,
+.metadata-editor-dialog .p-dialog-footer,
 .record-dialog .p-dialog-footer {
   padding: 0 1.15rem 1.15rem;
   margin-top: 1rem;
 }
 
 .collection-dialog .p-dialog-header-actions,
+.metadata-editor-dialog .p-dialog-header-actions,
 .record-dialog .p-dialog-header-actions {
   gap: 0.45rem;
 }
 
 .collection-dialog .p-dialog-header-icon,
+.metadata-editor-dialog .p-dialog-header-icon,
 .record-dialog .p-dialog-header-icon {
   width: 2.5rem;
   height: 2.5rem;
@@ -3107,6 +3131,93 @@ pre {
 
 .record-dialog__field--wide {
   grid-column: 1 / -1;
+}
+
+.metadata-editor-dialog__body {
+  gap: 1.1rem;
+}
+
+.metadata-editor-dialog__summary strong {
+  font-size: 1rem;
+}
+
+.metadata-editor-dialog__summary p {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.metadata-editor-dialog__summary code,
+.metadata-editor-dialog__empty code {
+  color: var(--amber);
+}
+
+.metadata-editor-dialog__mode-switch {
+  width: fit-content;
+}
+
+.metadata-editor-dialog__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.metadata-editor-dialog__raw-field code {
+  color: var(--amber);
+}
+
+.metadata-editor-dialog__textarea {
+  min-height: 18rem;
+  border: 1px solid var(--stroke);
+  border-radius: 1rem;
+  background: rgba(4, 17, 26, 0.94);
+  padding: 0.95rem 1rem;
+  color: #bff3e2;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.metadata-editor-dialog__textarea:focus {
+  outline: none;
+  border-color: var(--stroke-strong);
+  box-shadow: 0 0 0 0.16rem rgba(83, 229, 191, 0.12);
+}
+
+.metadata-editor-list {
+  display: grid;
+  gap: 0.85rem;
+  max-height: min(30rem, calc(100vh - 18rem));
+}
+
+.metadata-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) 10rem minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  align-items: end;
+  padding: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metadata-editor-row__field {
+  min-width: 0;
+}
+
+.metadata-editor-row__remove {
+  align-self: center;
+}
+
+.metadata-editor-dialog__empty {
+  padding: 1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+  text-align: center;
 }
 
 .p-dialog.import-dialog {
@@ -4196,6 +4307,19 @@ pre {
   }
 
   .record-dialog__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metadata-editor-dialog__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metadata-editor-dialog__mode-switch {
+    width: 100%;
+  }
+
+  .metadata-editor-row {
     grid-template-columns: 1fr;
   }
 
