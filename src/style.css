@@ -678,8 +678,12 @@ pre {
 .collection-card__avatar {
   display: grid;
   place-items: center;
+  flex: 0 0 2.5rem;
   width: 2.5rem;
   height: 2.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  aspect-ratio: 1;
   border-radius: 999px;
   background: linear-gradient(
     135deg,
