@@ -3470,6 +3470,11 @@ pre {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.activity-panel__header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .activity-log-list {
   display: grid;
   gap: 0.9rem;

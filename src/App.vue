@@ -2670,6 +2670,44 @@ const appendActivityLogEntry = (entry) => {
   ]);
 };
 
+const clearCurrentWorkspaceActivityLog = () => {
+  const workspaceEntries = currentWorkspaceActivityLog.value;
+
+  if (!workspaceEntries.length) return;
+
+  const activeWorkspaceKey = currentWorkspaceActivityKey.value;
+  const workspaceLabel =
+    [tenant.value, database.value].filter(Boolean).join(" / ") ||
+    "this workspace";
+  const removedCount = workspaceEntries.length;
+
+  confirm.require({
+    message: `Clear ${formatNumber(removedCount)} ${pluralize(removedCount, "activity event")} from '${workspaceLabel}'?`,
+    header: "Clear activity log?",
+    icon: "pi pi-info-circle",
+    rejectLabel: "Cancel",
+    acceptLabel: "Clear log",
+    rejectClass: "p-button-secondary p-button-outlined",
+    acceptClass: "p-button-danger",
+    acceptIcon: "pi pi-trash",
+    accept: () => {
+      expandedActivityEntries.value = {};
+      storeActivityLog(
+        activityLog.value.filter(
+          (entry) => entry.workspaceKey !== activeWorkspaceKey,
+        ),
+      );
+
+      toast.add({
+        severity: "success",
+        summary: "Activity log cleared",
+        detail: `Removed ${formatNumber(removedCount)} ${pluralize(removedCount, "event")} from ${workspaceLabel}.`,
+        life: 4000,
+      });
+    },
+  });
+};
+
 const normalizeSemanticQuerySettings = (value) => ({
   provider: value?.provider === "ollama" ? "ollama" : "openai",
   openaiBaseUrl:
@@ -7290,7 +7328,7 @@ const exportCSV = async (includeEmbeddings = false) => {
           </p>
         </div>
 
-        <div class="query-panel__header-actions">
+        <div class="query-panel__header-actions activity-panel__header-actions">
           <span class="tag-chip">
             {{
               currentCollection
@@ -7301,6 +7339,15 @@ const exportCSV = async (includeEmbeddings = false) => {
           <span class="tag-chip">
             {{ formatNumber(currentWorkspaceActivityLog.length) }} events
           </span>
+          <button
+            class="mini-button mini-button--danger"
+            type="button"
+            :disabled="!currentWorkspaceActivityLog.length"
+            @click="clearCurrentWorkspaceActivityLog"
+          >
+            <i class="pi pi-trash"></i>
+            <span>Clear log</span>
+          </button>
         </div>
       </div>
 
