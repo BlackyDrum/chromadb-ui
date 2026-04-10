@@ -25,6 +25,25 @@
   --amber-soft: rgba(255, 190, 114, 0.16);
   --danger: #ff8f8d;
   --shadow: 0 32px 70px rgba(0, 0, 0, 0.38);
+  --scrollbar-size: 0.72rem;
+  --scrollbar-track-color: rgba(255, 255, 255, 0.035);
+  --scrollbar-track-fill: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.045),
+    rgba(255, 255, 255, 0.018)
+  );
+  --scrollbar-thumb-color: rgba(196, 208, 191, 0.46);
+  --scrollbar-thumb-fill: linear-gradient(
+    180deg,
+    rgba(255, 200, 126, 0.72),
+    rgba(83, 229, 191, 0.58)
+  );
+  --scrollbar-thumb-fill-hover: linear-gradient(
+    180deg,
+    rgba(255, 211, 142, 0.84),
+    rgba(108, 236, 201, 0.7)
+  );
+  --scrollbar-thumb-border: rgba(4, 19, 27, 0.82);
 }
 
 *,
@@ -37,6 +56,11 @@ html,
 body,
 #app {
   min-height: 100%;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
 }
 
 body {
@@ -87,6 +111,37 @@ select {
 button {
   border: 0;
   background: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--scrollbar-track-fill);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: var(--scrollbar-thumb-fill);
+  background-clip: padding-box;
+  min-height: 2.5rem;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-fill-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .p-component {
@@ -2021,7 +2076,7 @@ pre {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
 }
 
 .query-result-card__document-shell--empty {
@@ -2079,7 +2134,7 @@ pre {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
   color: #a8eed9;
   font-size: 0.82rem;
   line-height: 1.6;
@@ -2098,18 +2153,21 @@ pre {
 
 .query-result-card__document-shell::-webkit-scrollbar,
 .query-result-card__metadata::-webkit-scrollbar {
-  width: 0.45rem;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 .query-result-card__document-shell::-webkit-scrollbar-thumb,
 .query-result-card__metadata::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid var(--scrollbar-thumb-border);
+  background: var(--scrollbar-thumb-fill);
+  background-clip: padding-box;
 }
 
 .query-result-card__document-shell::-webkit-scrollbar-track,
 .query-result-card__metadata::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track-fill);
 }
 
 .query-result-card__actions {
@@ -2990,20 +3048,23 @@ pre {
 
 .scroll-container {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
 }
 
 .scroll-container::-webkit-scrollbar {
-  width: 0.5rem;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 .scroll-container::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
+  border: 2px solid var(--scrollbar-thumb-border);
+  background: var(--scrollbar-thumb-fill);
+  background-clip: padding-box;
 }
 
 .scroll-container::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track-fill);
 }
 
 .sidebar-backdrop {
