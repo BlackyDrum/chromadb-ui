@@ -10386,24 +10386,29 @@ const exportCSV = async (includeEmbeddings = false) => {
         }}</strong>
         <p>
           Duplicate the collection settings, then decide whether the new
-          namespace should also copy every stored row and embedding.
+          namespace should also copy every stored row.
         </p>
 
-        <div class="collection-clone-dialog__chips">
-          <span class="tag-chip">
-            Source {{ selectedCollection?.name ?? "Unknown" }}
-          </span>
-          <span class="tag-chip">
-            {{
-              selectedCollection &&
-              currentCollection &&
-              selectedCollection.id === currentCollection.id
-                ? `${formatNumber(currentCollectionData.length)} loaded rows ready to copy`
-                : cloneCollectionData.includeRecords
-                  ? "Rows will be fetched directly from Chroma"
-                  : "Create an empty copy"
-            }}
-          </span>
+        <div class="collection-clone-dialog__facts">
+          <div class="collection-clone-dialog__fact">
+            <span>Source collection</span>
+            <strong>{{ selectedCollection?.name ?? "Unknown" }}</strong>
+          </div>
+
+          <div class="collection-clone-dialog__fact">
+            <span>Copy plan</span>
+            <strong>
+              {{
+                selectedCollection &&
+                currentCollection &&
+                selectedCollection.id === currentCollection.id
+                  ? `${formatNumber(currentCollectionData.length)} loaded rows ready to copy`
+                  : cloneCollectionData.includeRecords
+                    ? "Rows will be fetched directly from Chroma"
+                    : "Create an empty copy"
+              }}
+            </strong>
+          </div>
         </div>
       </div>
 

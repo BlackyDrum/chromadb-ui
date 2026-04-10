@@ -3228,10 +3228,33 @@ pre {
   line-height: 1.6;
 }
 
-.collection-clone-dialog__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
+.collection-clone-dialog__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.collection-clone-dialog__fact {
+  display: grid;
+  gap: 0.38rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.025);
+  min-width: 0;
+}
+
+.collection-clone-dialog__fact span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.collection-clone-dialog__fact strong {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  white-space: normal;
 }
 
 .collection-clone-dialog__mode-switch {
@@ -4484,6 +4507,10 @@ pre {
 
   .metadata-editor-dialog__mode-switch {
     width: 100%;
+  }
+
+  .collection-clone-dialog__facts {
+    grid-template-columns: 1fr;
   }
 
   .metadata-editor-row {
