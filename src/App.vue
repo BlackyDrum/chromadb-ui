@@ -10287,12 +10287,12 @@ const exportCSV = async (includeEmbeddings = false) => {
           :disabled="isCreatingCollection"
           @click="handleCreateCollection"
         >
-          <span>Create collection</span>
           <i
             :class="
               isCreatingCollection ? 'pi pi-spin pi-spinner' : 'pi pi-plus'
             "
           ></i>
+          <span>Create collection</span>
         </button>
       </div>
     </template>
@@ -10353,12 +10353,12 @@ const exportCSV = async (includeEmbeddings = false) => {
           :disabled="isEditingCollection"
           @click="handleEditCollection"
         >
-          <span>Save changes</span>
           <i
             :class="
               isEditingCollection ? 'pi pi-spin pi-spinner' : 'pi pi-check'
             "
           ></i>
+          <span>Save changes</span>
         </button>
       </div>
     </template>
@@ -10486,12 +10486,12 @@ const exportCSV = async (includeEmbeddings = false) => {
           :disabled="isCloningCollection"
           @click="handleCloneCollection"
         >
-          <span>Clone collection</span>
           <i
             :class="
               isCloningCollection ? 'pi pi-spin pi-spinner' : 'pi pi-copy'
             "
           ></i>
+          <span>Clone collection</span>
         </button>
       </div>
     </template>
