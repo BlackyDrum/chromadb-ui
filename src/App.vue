@@ -45,6 +45,11 @@ const currentCollectionData = ref([]);
 const selectedTableRows = ref([]);
 const createCollectionData = ref({ name: null, metadata: null });
 const editCollectionData = ref({ name: null, metadata: null });
+const cloneCollectionData = ref({
+  name: "",
+  metadata: "",
+  includeRecords: true,
+});
 const createRecordData = ref({
   id: "",
   document: "",
@@ -91,11 +96,13 @@ const isCreatingRecord = ref(false);
 const isCheckingWorkspaceHealth = ref(false);
 const isDeletingRows = ref(false);
 const isApplyingBulkMetadata = ref(false);
+const isCloningCollection = ref(false);
 const isSavingDocumentEditor = ref(false);
 const isSavingMetadataEditor = ref(false);
 
 const showCreateCollectionForm = ref(false);
 const showEditCollectionForm = ref(false);
+const showCloneCollectionForm = ref(false);
 const showCreateRecordForm = ref(false);
 const showBulkMetadataDialog = ref(false);
 const mobileSidebarOpen = ref(false);
@@ -293,6 +300,20 @@ const createEmptyRecordDraft = () => ({
   metadata: "",
   embedding: "",
 });
+
+const createEmptyCloneCollectionDraft = () => ({
+  name: "",
+  metadata: "",
+  includeRecords: true,
+});
+
+const resetCloneCollectionState = (force = false) => {
+  if (isCloningCollection.value && !force) return;
+
+  showCloneCollectionForm.value = false;
+  isCloningCollection.value = false;
+  cloneCollectionData.value = createEmptyCloneCollectionDraft();
+};
 
 const resetCreateRecordState = () => {
   showCreateRecordForm.value = false;
@@ -999,6 +1020,26 @@ const formatEmbeddingNumber = (value) => {
 
 const getCollectionInitial = (name) =>
   (name?.trim()?.charAt(0) ?? "C").toUpperCase();
+
+const buildSuggestedCollectionCloneName = (sourceName) => {
+  const normalizedSourceName = `${sourceName ?? ""}`.trim() || "collection";
+  const baseName = `${normalizedSourceName}-copy`;
+  const existingCollectionNames = new Set(
+    collections.value.map((collection) => `${collection?.name ?? ""}`.trim()),
+  );
+
+  if (!existingCollectionNames.has(baseName)) {
+    return baseName;
+  }
+
+  let duplicateIndex = 2;
+
+  while (existingCollectionNames.has(`${baseName}-${duplicateIndex}`)) {
+    duplicateIndex += 1;
+  }
+
+  return `${baseName}-${duplicateIndex}`;
+};
 
 const resetEmbeddingViews = () => {
   embeddingPreviewCache.value = {};
@@ -4588,6 +4629,7 @@ const handleDisconnect = () => {
   resetBulkSelectionState();
   resetCreateRecordState();
   resetImportState();
+  resetCloneCollectionState();
   showMetricsViewer.value = false;
   showActivityLogViewer.value = false;
   expandedActivityEntries.value = {};
@@ -4881,7 +4923,7 @@ const handleCreateRecord = async () => {
 };
 
 const toggleCollectionOverlayPanel = (event, collection) => {
-  if (isDeletingCollection.value) return;
+  if (isDeletingCollection.value || isCloningCollection.value) return;
 
   selectedCollection.value = JSON.parse(JSON.stringify(collection));
   collectionOverlayPanel.value.toggle(event);
@@ -4984,6 +5026,190 @@ const handleCollectionEdit = () => {
     selectedCollection.value.metadata === null
       ? null
       : JSON.stringify(selectedCollection.value.metadata, null, 2);
+};
+
+const handleCollectionClone = () => {
+  if (!selectedCollection.value || isCloningCollection.value) return;
+
+  showCloneCollectionForm.value = true;
+  collectionOverlayPanel.value.visible = false;
+  cloneCollectionData.value = {
+    name: buildSuggestedCollectionCloneName(selectedCollection.value.name),
+    metadata:
+      selectedCollection.value.metadata == null
+        ? ""
+        : JSON.stringify(selectedCollection.value.metadata, null, 2),
+    includeRecords: true,
+  };
+};
+
+const handleCloneCollection = async () => {
+  if (!selectedCollection.value || isCloningCollection.value) return;
+
+  const sourceCollection = JSON.parse(JSON.stringify(selectedCollection.value));
+  const nextName = `${cloneCollectionData.value.name ?? ""}`.trim();
+  const shouldCopyRecords = cloneCollectionData.value.includeRecords;
+
+  if (!nextName) {
+    toast.add({
+      severity: "error",
+      summary: "Missing collection name",
+      detail: "Provide a name for the cloned collection.",
+      life: 5000,
+    });
+    return;
+  }
+
+  if (collections.value.some((collection) => collection.name === nextName)) {
+    toast.add({
+      severity: "error",
+      summary: "Collection already exists",
+      detail: `${nextName} already exists in this workspace. Choose a different clone name.`,
+      life: 5000,
+    });
+    return;
+  }
+
+  let metadata = null;
+  let sourceRecords = [];
+
+  try {
+    metadata = cloneCollectionData.value.metadata
+      ? JSON.parse(cloneCollectionData.value.metadata)
+      : null;
+  } catch (_) {
+    toast.add({
+      severity: "error",
+      summary: "Invalid metadata",
+      detail: "Metadata must be valid JSON.",
+      life: 5000,
+    });
+    return;
+  }
+
+  isCloningCollection.value = true;
+
+  try {
+    if (shouldCopyRecords) {
+      sourceRecords = await fetchAllRecordsForCollection(sourceCollection.id, [
+        "documents",
+        "embeddings",
+        "metadatas",
+        "uris",
+      ]);
+    }
+
+    await axios.post(collectionBaseUrl.value, {
+      name: nextName,
+      metadata,
+    });
+
+    await retrieveCollections();
+
+    const clonedCollection = collections.value.find(
+      (collection) => collection.name === nextName,
+    );
+
+    if (!clonedCollection) {
+      throw new Error(
+        "The cloned collection was created, but it could not be loaded from the workspace.",
+      );
+    }
+
+    if (shouldCopyRecords && sourceRecords.length) {
+      const payloadGroups = buildChunkedRecordAddPayloadGroups(sourceRecords, {
+        includeMetadata: true,
+      });
+
+      try {
+        for (const payloadGroup of payloadGroups) {
+          await axios.post(
+            `${collectionBaseUrl.value}/${clonedCollection.id}/add`,
+            payloadGroup,
+          );
+        }
+      } catch (copyError) {
+        try {
+          await axios.delete(`${collectionBaseUrl.value}/${nextName}`);
+          await retrieveCollections();
+        } catch (_) {
+          // Best effort rollback only; preserve the original clone failure below.
+        }
+
+        throw new Error(
+          `The collection was created, but copying rows failed and the clone was removed. ${getErrorMessage(copyError)}`,
+        );
+      }
+    }
+
+    const copiedRowCount = sourceRecords.length;
+    const collectionDetailSection = buildCollectionActivityDetailSection({
+      title: nextName,
+      afterName: nextName,
+      afterMetadata: metadata,
+      includeAllFields: true,
+    });
+
+    toast.add({
+      severity: "success",
+      summary: "Collection cloned",
+      detail: shouldCopyRecords
+        ? `Created ${nextName} from ${sourceCollection.name} with ${formatNumber(copiedRowCount)} copied ${pluralize(copiedRowCount, "row")}.`
+        : `Created ${nextName} from ${sourceCollection.name} without copying rows.`,
+      life: 5000,
+    });
+
+    appendActivityLogEntry({
+      type: "collection",
+      title: `Cloned collection ${sourceCollection.name} to ${nextName}`,
+      description: shouldCopyRecords
+        ? `Created ${nextName} by copying ${formatNumber(copiedRowCount)} ${pluralize(copiedRowCount, "row")} from ${sourceCollection.name}.`
+        : `Created ${nextName} as a metadata-only copy of ${sourceCollection.name}.`,
+      collectionId: clonedCollection.id,
+      collectionName: nextName,
+      rowCount: shouldCopyRecords ? copiedRowCount : 0,
+      details: [
+        collectionDetailSection,
+        {
+          title: "Clone source",
+          changes: [
+            buildActivityDetailChange({
+              label: "Source collection",
+              after: sourceCollection.name,
+            }),
+            buildActivityDetailChange({
+              label: "Copy mode",
+              after: shouldCopyRecords ? "Rows and settings" : "Settings only",
+            }),
+            buildActivityDetailChange({
+              label: "Rows copied",
+              after: shouldCopyRecords ? formatNumber(copiedRowCount) : "0",
+            }),
+          ],
+        },
+      ].filter(Boolean),
+    });
+
+    resetCloneCollectionState(true);
+    await retrieveCollections();
+
+    const nextCollection = collections.value.find(
+      (collection) => collection.name === nextName,
+    );
+
+    if (nextCollection) {
+      await handleCollectionSelection(nextCollection, true);
+    }
+  } catch (error) {
+    toast.add({
+      severity: "error",
+      summary: "Clone failed",
+      detail: getErrorMessage(error),
+      life: 7000,
+    });
+  } finally {
+    isCloningCollection.value = false;
+  }
 };
 
 const handleEditCollection = async () => {
@@ -5548,6 +5774,58 @@ const refreshMetricsSummaryIfNeeded = async () => {
   }
 };
 
+const fetchAllRecordsForCollection = async (
+  collectionId,
+  include = ["documents", "embeddings", "metadatas", "uris"],
+) => {
+  if (!collectionId) {
+    return [];
+  }
+
+  const response = await axios.post(
+    `${collectionBaseUrl.value}/${collectionId}/get`,
+    {
+      include,
+    },
+  );
+
+  const responseIds = Array.isArray(response.data?.ids)
+    ? response.data.ids
+    : [];
+  const documents = Array.isArray(response.data?.documents)
+    ? response.data.documents
+    : [];
+  const embeddings = Array.isArray(response.data?.embeddings)
+    ? response.data.embeddings
+    : [];
+  const metadatas = Array.isArray(response.data?.metadatas)
+    ? response.data.metadatas
+    : [];
+  const uris = Array.isArray(response.data?.uris) ? response.data.uris : [];
+
+  return responseIds.map((id, index) => {
+    const record = { id };
+
+    if (documents[index] !== undefined && documents[index] !== null) {
+      record.document = documents[index];
+    }
+
+    if (Array.isArray(embeddings[index])) {
+      record.embedding = embeddings[index];
+    }
+
+    if (metadatas[index] !== undefined) {
+      record.metadata = metadatas[index];
+    }
+
+    if (uris[index] !== undefined && uris[index] !== null) {
+      record.uri = uris[index];
+    }
+
+    return record;
+  });
+};
+
 const fetchRecordsByIds = async (
   ids,
   include = ["documents", "embeddings", "metadatas", "uris"],
@@ -5648,6 +5926,56 @@ const buildRecordAddPayloadGroups = (
   }
 
   return Array.from(payloadGroups.values());
+};
+
+const buildChunkedRecordAddPayloadGroups = (
+  records,
+  options = {},
+  maxGroupSize = 250,
+) => {
+  return buildRecordAddPayloadGroups(records, options).flatMap(
+    (payloadGroup) => {
+      const totalIds = Array.isArray(payloadGroup.ids)
+        ? payloadGroup.ids.length
+        : 0;
+
+      if (!totalIds) {
+        return [];
+      }
+
+      if (totalIds <= maxGroupSize) {
+        return [payloadGroup];
+      }
+
+      const chunkedGroups = [];
+
+      for (
+        let startIndex = 0;
+        startIndex < totalIds;
+        startIndex += maxGroupSize
+      ) {
+        const endIndex = startIndex + maxGroupSize;
+
+        chunkedGroups.push({
+          ids: payloadGroup.ids.slice(startIndex, endIndex),
+          embeddings: Array.isArray(payloadGroup.embeddings)
+            ? payloadGroup.embeddings.slice(startIndex, endIndex)
+            : null,
+          documents: Array.isArray(payloadGroup.documents)
+            ? payloadGroup.documents.slice(startIndex, endIndex)
+            : null,
+          metadatas: Array.isArray(payloadGroup.metadatas)
+            ? payloadGroup.metadatas.slice(startIndex, endIndex)
+            : null,
+          uris: Array.isArray(payloadGroup.uris)
+            ? payloadGroup.uris.slice(startIndex, endIndex)
+            : null,
+        });
+      }
+
+      return chunkedGroups;
+    },
+  );
 };
 
 const normalizeMetadataForComparison = (value) => {
@@ -6590,12 +6918,18 @@ const exportCSV = async (includeEmbeddings = false) => {
             <button
               class="collection-card__menu"
               type="button"
-              :disabled="isDeletingCollection || isFetchingCollectionData"
+              :disabled="
+                isDeletingCollection ||
+                isFetchingCollectionData ||
+                isCloningCollection
+              "
               @click.stop="toggleCollectionOverlayPanel($event, collection)"
             >
               <i
                 :class="
-                  isDeletingCollection || isFetchingCollectionData
+                  isDeletingCollection ||
+                  isFetchingCollectionData ||
+                  isCloningCollection
                     ? 'pi pi-spin pi-spinner'
                     : 'pi pi-ellipsis-h'
                 "
@@ -10030,6 +10364,139 @@ const exportCSV = async (includeEmbeddings = false) => {
     </template>
   </Dialog>
 
+  <Dialog
+    v-model:visible="showCloneCollectionForm"
+    modal
+    :draggable="false"
+    :closable="!isCloningCollection"
+    class="collection-dialog collection-clone-dialog"
+    @hide="resetCloneCollectionState"
+  >
+    <template #header>
+      <div class="dialog-heading">
+        <p class="section-kicker">Clone collection</p>
+        <h2>Copy this namespace into a new one</h2>
+      </div>
+    </template>
+
+    <div class="dialog-body">
+      <div class="record-dialog__meta collection-clone-dialog__summary">
+        <strong>{{
+          selectedCollection?.name ?? "No collection selected"
+        }}</strong>
+        <p>
+          Duplicate the collection settings, then decide whether the new
+          namespace should also copy every stored row and embedding.
+        </p>
+
+        <div class="collection-clone-dialog__chips">
+          <span class="tag-chip">
+            Source {{ selectedCollection?.name ?? "Unknown" }}
+          </span>
+          <span class="tag-chip">
+            {{
+              selectedCollection &&
+              currentCollection &&
+              selectedCollection.id === currentCollection.id
+                ? `${formatNumber(currentCollectionData.length)} loaded rows ready to copy`
+                : cloneCollectionData.includeRecords
+                  ? "Rows will be fetched directly from Chroma"
+                  : "Create an empty copy"
+            }}
+          </span>
+        </div>
+      </div>
+
+      <div class="query-mode-switch collection-clone-dialog__mode-switch">
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active':
+              cloneCollectionData.includeRecords,
+          }"
+          type="button"
+          :disabled="isCloningCollection"
+          @click="cloneCollectionData.includeRecords = true"
+        >
+          Copy rows
+        </button>
+
+        <button
+          class="query-mode-switch__button"
+          :class="{
+            'query-mode-switch__button--active':
+              !cloneCollectionData.includeRecords,
+          }"
+          type="button"
+          :disabled="isCloningCollection"
+          @click="cloneCollectionData.includeRecords = false"
+        >
+          Settings only
+        </button>
+      </div>
+
+      <p class="field__hint collection-clone-dialog__mode-hint">
+        {{
+          cloneCollectionData.includeRecords
+            ? "The clone keeps the same row IDs, documents, embeddings, metadata, and URIs in the new collection."
+            : "Only the collection shell and metadata are copied. No rows are written to the new collection."
+        }}
+      </p>
+
+      <label class="field">
+        <span class="field__label">New collection name</span>
+        <span class="field__hint"
+          >Choose a fresh namespace for the cloned collection.</span
+        >
+        <input
+          v-model="cloneCollectionData.name"
+          type="text"
+          placeholder="customer-support-copy"
+        />
+      </label>
+
+      <label class="field">
+        <span class="field__label">Metadata</span>
+        <span class="field__hint"
+          >Review or edit the cloned collection metadata before creating
+          it.</span
+        >
+        <textarea
+          v-model="cloneCollectionData.metadata"
+          rows="8"
+          placeholder='{"domain":"support","owner":"ops"}'
+        ></textarea>
+      </label>
+    </div>
+
+    <template #footer>
+      <div class="dialog-actions">
+        <button
+          class="ui-button ui-button--ghost"
+          type="button"
+          :disabled="isCloningCollection"
+          @click="resetCloneCollectionState"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="ui-button ui-button--primary"
+          type="button"
+          :disabled="isCloningCollection"
+          @click="handleCloneCollection"
+        >
+          <span>Clone collection</span>
+          <i
+            :class="
+              isCloningCollection ? 'pi pi-spin pi-spinner' : 'pi pi-copy'
+            "
+          ></i>
+        </button>
+      </div>
+    </template>
+  </Dialog>
+
   <OverlayPanel
     ref="metadataFilterOverlayPanel"
     class="collection-menu-panel metadata-filter-panel"
@@ -10226,6 +10693,11 @@ const exportCSV = async (includeEmbeddings = false) => {
       <button class="menu-action" type="button" @click="handleCollectionEdit">
         <i class="pi pi-pencil"></i>
         <span>Edit collection</span>
+      </button>
+
+      <button class="menu-action" type="button" @click="handleCollectionClone">
+        <i class="pi pi-copy"></i>
+        <span>Clone collection</span>
       </button>
 
       <button

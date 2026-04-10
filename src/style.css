@@ -3145,6 +3145,10 @@ pre {
   width: min(60rem, calc(100vw - 2rem));
 }
 
+.p-dialog.collection-clone-dialog {
+  width: min(48rem, calc(100vw - 2rem));
+}
+
 .p-dialog.document-editor-dialog {
   width: min(68rem, calc(100vw - 2rem));
 }
@@ -3213,6 +3217,35 @@ pre {
 .record-dialog__meta p {
   color: var(--text-soft);
   line-height: 1.6;
+}
+
+.collection-clone-dialog__summary strong {
+  font-size: 1rem;
+}
+
+.collection-clone-dialog__summary p {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.collection-clone-dialog__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.collection-clone-dialog__mode-switch {
+  display: flex;
+  width: 100%;
+}
+
+.collection-clone-dialog__mode-switch .query-mode-switch__button {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.collection-clone-dialog__mode-hint {
+  margin-top: -0.2rem;
 }
 
 .record-dialog__grid {

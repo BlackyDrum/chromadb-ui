@@ -26,8 +26,8 @@ You can try the deployed UI [here](https://blackydrum.github.io/chromadb-ui/):
 
 - Connect to a ChromaDB server with a URL, tenant, and database.
 - Browse all collections in the current workspace.
-- Create, rename, and delete collections.
-- Inspect and edit collection metadata and workspace details from the dashboard.
+- Create, rename, clone and delete collections.
+- Inspect and edit collection metadata.
 - Run semantic text search inside a collection.
 - Choose an embedding provider for semantic queries, including OpenAI or Ollama.
 - Run embedding-based nearest-neighbor search with raw vector JSON.
